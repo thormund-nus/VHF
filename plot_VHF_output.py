@@ -24,7 +24,7 @@ def get_files(start_path: Path) -> List[Path] | Path:
         marker_len = len(dir_marker)
         for i, f in enumerate(start_path_contents):
             # Print only the filename
-            print(f"{i:>3}: \x1B[31m{dir_marker if f.is_dir() else ' '*marker_len}\x1B[39m{f.parts[-1]}")
+            print(f"{i:>3}: \x1B[31m{dir_marker if f.is_dir() else ' '*marker_len}\x1B[39m{f.name}")
     else:
         for i, f in enumerate(start_path_contents):
             print(f"{i:>3}: {f.parts[-1]}")
@@ -79,9 +79,8 @@ def main():
         file: Path = files
     
     parsed = VHFparser(file)
-    phase = np.arctan2(parsed.q_arr, parsed.i_arr)
+    phase = -np.arctan2(parsed.i_arr, parsed.q_arr)
     phase /= 2*np.pi
-    phase += 0.5  # account for I' and Q'
     phase -= parsed.m_arr
 
     fig, ax = plt.subplots(nrows=1, ncols=1)
