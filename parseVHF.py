@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 import numpy as np
 import os
@@ -80,6 +81,27 @@ class VHFparser():
     # def m_arr(self):
     #     return self._m_arr_copy.view(dtype=np.int16)
 
+    def parse_header(self, header_raw: bytes):
+        if header_raw is None:
+            raise ValueError("header_raw was not given.")
+
+        # init
+        self.header: dict = dict()
+        header_raw: list[bytes] = header_raw.split(b'# ')[1:]
+        print(f"Debug: {header_raw = }")
+        for x in header_raw[0].split(b' -')[1:]:  # command line record
+            x = x.decode().strip(' ')
+            # print(f"Debug: {x = }")
+            self.header[x[0]] = x[1:].strip()
+            # print(f"Debug: {self.header[x[0]] = }")
+
+        # print(f"Debug: {header_raw[1].split(b': ')[1].decode().strip() = }")
+        self.header['Time start'] = datetime.fromisoformat(header_raw[1].split(b': ')[1].decode().strip())
+        for k, v in self.header():
+            try:
+                self.header[k] = int(v)
+            except ValueError:
+                pass
 
 if __name__ == '__main__':
     # x = VHFparser(os.path.join(os.path.dirname(__file__), 'vhf_func_gen/Data/60.000_020MHz.txt'))
