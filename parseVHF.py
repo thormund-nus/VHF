@@ -97,11 +97,25 @@ class VHFparser():
 
         # print(f"Debug: {header_raw[1].split(b': ')[1].decode().strip() = }")
         self.header['Time start'] = datetime.fromisoformat(header_raw[1].split(b': ')[1].decode().strip())
-        for k, v in self.header():
+        for k, v in self.header.items():
             try:
                 self.header[k] = int(v)
             except ValueError:
                 pass
+            except TypeError:
+                pass
+        
+        # generate explicit params
+        if 'l' in self.header.keys():
+            self.header['base sampling freq'] = 10e6
+        elif 'h' in self.header.keys():
+            self.header['base sampling freq'] = 20e6
+        else:
+            self.header['base sampling freq'] = 20e6
+        
+        if self.header['s'] is not None:
+            self.header['sampling freq'] = self.header['base sampling freq'] / (1+self.header['s'])
+
 
 if __name__ == '__main__':
     # x = VHFparser(os.path.join(os.path.dirname(__file__), 'vhf_func_gen/Data/60.000_020MHz.txt'))
