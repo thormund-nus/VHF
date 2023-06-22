@@ -4,17 +4,41 @@ import numpy as np
 import os
 import re
 import struct
+from _io import BufferedRandom
 
 
 class VHFparser:
     # Written with reference to SVN r14
 
-    def __init__(self, filename: str | os.PathLike):
+    def __init__(self, filename: str | os.PathLike | BufferedRandom):
         """Takes a VHF output file and populates relevant properties."""
         self.__createLogger()
         self._num_read_bytes = 0
-        self.filesize = os.path.getsize(filename)  # number of bytes
+        if type(filename) == BufferedRandom:
+            self.filesize = filename.tell()
+            filename.seek(0)
+            self._init_buffer(filename)
+        else:
+            self.filesize = os.path.getsize(filename)  # number of bytes
+            self._init_file(filename)
+        
 
+        # populate body "data"
+        max_data_size = int((self.filesize - self._num_read_bytes) / 8)
+        self.data = np.memmap(
+            filename,
+            dtype=np.dtype(np.uint64).newbyteorder("<"),
+            mode="r",
+            offset=self._num_read_bytes,
+            shape=(max_data_size,),
+        )
+        # get (I, Q, M)
+        self.read_words_numpy(self.data)
+
+    def __createLogger(self):
+        self.logger = logging.getLogger("vhfparser")
+    
+    def _init_file(self, filename):
         # populate header
         with open(filename, "rb") as file:  # binary read
             header = file.read(8)
@@ -31,21 +55,23 @@ class VHFparser:
             self._num_read_bytes += header_count
             self.headerraw: bytes = file.read((header_count)).rstrip(b"\x00")
             self.parse_header(self.headerraw)
+    
+    def _init_buffer(self, buffer):
+        """For bufferedRandom"""
+        header = buffer.read(8)
+        if not 0xFFFFFFFFFFFF0000 & int.from_bytes(header, "little") == 0x123456ABCDEF0000:
+            self.logger.error(
+                "Buffer not found to conform to header expectations.")
+            raise ValueError(
+                "Buffer does not conform to header expectations.")
 
-        # populate body "data"
-        max_data_size = int((self.filesize - self._num_read_bytes) / 8)
-        self.data = np.memmap(
-            filename,
-            dtype=np.dtype(np.uint64).newbyteorder("<"),
-            mode="r",
-            offset=self._num_read_bytes,
-            shape=(max_data_size,),
-        )
-        # get (I, Q, M)
-        self.read_words_numpy(self.data)
+        # 1 to account for first word used to determine size of header
+        header_count_b = (int.from_bytes(header, "little") & 0xFFFF) - 1
+        header_count = header_count_b * 8
+        self._num_read_bytes += header_count
+        self.headerraw: bytes = buffer.read((header_count)).rstrip(b"\x00")
+        self.parse_header(self.headerraw)
 
-    def __createLogger(self):
-        self.logger = logging.getLogger("vhfparser")
 
     # def read_word(self, b: bytes, idx=int):
     #     """converts 8 bytes in (I, Q, M)."""
