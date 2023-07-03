@@ -16,7 +16,7 @@ executable has the necessary permissions. Ideally, `ls -la` would show
   
   -rwsr-xr-x 1 root   users <size> <date> <time> set_device_mode
 
-This can be done by `chmod u+x` on the file.
+This can be done by `chown root` and `chmod u+x` on the file.
 
 Currently, several files utilise symbolic links to the board and streaming
 executable, namely,
@@ -45,4 +45,22 @@ for collecting 'stream' data.
 
 ### Plotting Data
 
-  
+## Synology NAS for Data collection
+Files to edit
+```
+/etc/default/nfs-common
+-----
+NEED_IDMAPD = yes
+```
+```
+/etc/sysconfig/nfs
+-----
+??
+```
+To check if it has been mounted, use `mount | grep nfs`.
+```
+/etc/fstab
+-----
+192.168.109.131:/volume1/fibre_sensing	/mnt/nas-fibre-sensing	nfs defaults,_netdev,timeo=900,retrans=5,sec=sys,vers=4,x-systemd.automount,x-systemd.mount-timeout=15,x-systemd.idle-timeout=10min,nofail 0 0
+```
+
