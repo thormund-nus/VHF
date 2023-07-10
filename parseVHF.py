@@ -14,14 +14,19 @@ class VHFparser:
         """Takes a VHF output file and populates relevant properties."""
         self.__createLogger()
         self._num_read_bytes = 0
-        if type(filename) == BufferedRandom:
+
+        # Begin Parsing logic
+        if isinstance(filename, BufferedRandom):
             self.filesize = filename.tell()
             filename.seek(0)
             self._init_buffer(filename)
-        else:
+        elif isinstance(filename, str) or isinstance(filename, os.PathLike):
             self.filesize = os.path.getsize(filename)  # number of bytes
             self._init_file(filename)
-        
+        else:
+            self.logger.warning("No file-like/buffer object given to init.")
+            print("No file-like/buffer object given to init.")
+            return
 
         # populate body "data"
         max_data_size = int((self.filesize - self._num_read_bytes) / 8)
@@ -39,27 +44,14 @@ class VHFparser:
         self.logger = logging.getLogger("vhfparser")
     
     def _init_file(self, filename):
-        # populate header
+        """For files. Opens file object, and parse by _init_buffer."""
         with open(filename, "rb") as file:  # binary read
-            header = file.read(8)
-            if not 0xFFFFFFFFFFFF0000 & int.from_bytes(header, "little") == 0x123456ABCDEF0000:
-                self.logger.error("File: %s", filename)
-                self.logger.error(
-                    "not found to conform to header expectations.")
-                raise ValueError(
-                    "File does not conform to header expectations.")
-
-            # 1 to account for first word used to determine size of header
-            header_count_b = (int.from_bytes(header, "little") & 0xFFFF) - 1
-            header_count = header_count_b * 8
-            self._num_read_bytes += header_count
-            self.headerraw: bytes = file.read((header_count)).rstrip(b"\x00")
-            self.parse_header(self.headerraw)
+            self._init_buffer(file)
     
     def _init_buffer(self, buffer):
-        """For bufferedRandom"""
+        """For bufferedRandom."""
         header = buffer.read(8)
-        if not 0xFFFFFFFFFFFF0000 & int.from_bytes(header, "little") == 0x123456ABCDEF0000:
+        if 0xFFFFFFFFFFFF0000 & int.from_bytes(header, "little") != 0x123456ABCDEF0000:
             self.logger.error(
                 "Buffer not found to conform to header expectations.")
             raise ValueError(
