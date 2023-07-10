@@ -1,11 +1,11 @@
 # Written with svn r14 in mind, where files are now explicitly set to save in
 # binary output
 
+import sys
 from matplotlib import pyplot as plt
 import numpy as np
 from os import path, listdir
-import sys
-from typing import List, Optional
+from typing import List, Tuple, Callable
 from pathlib import Path
 from parseVHF import VHFparser  # relative import
 import scipy as sp
@@ -47,9 +47,9 @@ def get_files(start_path: Path) -> List[Path] | Path:
             if -1 <= my_input < len(start_path_contents):
                 break
             if my_input >= len(start_path_contents):
-                print(f"Value given is too large!")
+                print("Value given is too large!")
             else:
-                print(f"Value given is too small!")
+                print("Value given is too small!")
         except ValueError:
             print("Invalid value given!")
 
@@ -80,9 +80,9 @@ def user_input_bool(prompt: str) -> bool:
         # Convert user input into Path for return
         try:
             my_input = my_input[0].lower()
-            if my_input == "y":
+            if my_input == 'y':
                 return True
-            elif my_input == "n":
+            elif my_input == 'n':
                 return False
             else:
                 print(f"Invalid value!")
@@ -91,7 +91,7 @@ def user_input_bool(prompt: str) -> bool:
 
 
 def get_phase(o: VHFparser) -> np.ndarray:
-    """Returns phi/2pi; phi:= atan(Q/I)
+    """Return phi/2pi; phi:= atan(Q/I).
 
     Input
     -----
@@ -101,15 +101,16 @@ def get_phase(o: VHFparser) -> np.ndarray:
     -----
     phase: Divided by 2pi
     """
-    phase = -np.arctan2(o.i_arr, o.q_arr)
-    phase /= 2 * np.pi
-    phase -= o.m_arr
-    o.reduced_phase = phase
-    return phase
+    if o.reduced_phase is None:
+        phase = -np.arctan2(o.i_arr, o.q_arr)
+        phase /= 2 * np.pi
+        phase -= o.m_arr
+        o.reduced_phase = phase
+    return o.reduced_phase
 
 
 def get_radius(o: VHFparser) -> np.ndarray:
-    """Returns norm of (I, Q)"""
+    """Return norm of (I, Q)."""
     result = np.hypot(o.i_arr, o.q_arr)
     lower_lim = int(1e5)
     print(
@@ -118,20 +119,18 @@ def get_radius(o: VHFparser) -> np.ndarray:
     return result
 
 
-def get_spec(o: VHFparser) -> List[np.ndarray]:
-    """(f, Pxx_den) from x(t) signal, by periodogram method"""
-    if (p := o.reduced_phase) is None:
-        p = get_phase(o)
+def get_spec(o: VHFparser) -> Tuple[np.ndarray, np.ndarray]:
+    """(f, Pxx_den) from x(t) signal, by periodogram method."""
+    p = o.reduced_phase
     # f, spec = sp.signal.welch(2*np.pi*p, fs=o.header['sampling freq'])
     f, spec = sp.signal.periodogram(
         2 * np.pi * p, fs=o.header["sampling freq"])
     return f, spec
 
 
-def plot_rad_spec(radius: bool, spectrum: bool):
+def plot_rad_spec(radius: bool, spectrum: bool) -> Callable:
     """
-    Yields appropriate function for plotting phase, radius and spectrum as
-    desired.
+    Yield desired function for plotting phase, radius and spectrum.
 
     Input
     -----
@@ -159,7 +158,7 @@ def plot_rad_spec(radius: bool, spectrum: bool):
         lower_lim = np.max(np.where(t < 0.001))
         r_ax.plot(
             t[lower_lim:],
-            rs := get_radius(o)[lower_lim:],
+            rs:= get_radius(o)[lower_lim:],
             color="mediumblue",
             linewidth=0.2,
             label="Radius",
@@ -178,7 +177,8 @@ def plot_rad_spec(radius: bool, spectrum: bool):
             label="Spectrum Density",
             s=0.4,
         )
-        sp_ax.set_ylabel("Radius Spec Density /rad$^2$Hz$^-$$^1$", usetex=True)
+        sp_ax.set_ylabel(
+            "Phase 'Spec' Density /rad$^2$Hz$^-$$^1$", usetex=True)
         sp_ax.set_xlabel("$f$ [Hz]", usetex=True)
         sp_ax.set_yscale("log")
         sp_ax.set_xscale("log")
@@ -229,7 +229,7 @@ def main():
         print("No files!")
         return
 
-    if type(files) == list:
+    if isinstance(files, list):
         file: Path = files[0]
         print("This script has not implemented plotting and saving all files.")
     else:
