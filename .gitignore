@@ -3,6 +3,14 @@ Log/*
 FYPLibrary
 */Data/*
 */Log/*
+.vscode
+
+# Compiled outputs
+set_device_mode
+
+# Derived scripts
+run_and_plot_VHF.py
+run_vhf_wknd.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -164,3 +172,8 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# Include Miguel Spectrogram folder
+Archive/*
+!Archive/Miguel Raspberry Analysis
+!Archive/Miguel Spectrogram Recreation
