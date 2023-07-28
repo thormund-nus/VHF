@@ -177,3 +177,4 @@ cython_debug/
 Archive/*
 !Archive/Miguel Raspberry Analysis
 !Archive/Miguel Spectrogram Recreation
+Archive/Miguel Spectrogram Recreation/Data
