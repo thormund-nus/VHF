@@ -1,4 +1,8 @@
-import os
+import os, sys
+from pathlib import Path
+module_path = str(Path(__file__).parents[3])
+if module_path not in sys.path:
+    sys.path.append(module_path)
 import numpy as np
 import matplotlib.pyplot as plt
 from parseVHF import VHFparser # relative import
@@ -47,10 +51,10 @@ def join(times, joinp):
 ### Set parameters 0.5771A laser 2  0.5686A laser 4   0.5622  0.5894
 low_freq = 1e3
 high_freq = 70e3
-file_name = '2023-07-07T19%3A22%3A33.290832_s499_q268435456_F0_laser2_3674mA'
+file_name = "2023-07-07T19:22:33.290832_s499_q268435456_F0_laser2_3674mA_20km"
 
 ##### Data extraction
-file_rel_path = 'Data/' + file_name + '.bin'
+file_rel_path = '../Data/' + file_name + '.bin'
 parsed = VHFparser(os.path.join(os.path.dirname(__file__), file_rel_path))
 phase = -np.arctan2(parsed.i_arr, parsed.q_arr)
 phase /= 2*np.pi
