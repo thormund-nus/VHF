@@ -77,9 +77,7 @@ file_name = "2023-07-06T14:04:22.913767_s499_q268435456_F0_laser2_3674mA_20km"
 ##### Data extraction
 file_rel_path = '../Data/' + file_name + '.bin'
 parsed = VHFparser(os.path.join(os.path.dirname(__file__), file_rel_path))
-phase = -np.arctan2(parsed.i_arr, parsed.q_arr)
-phase /= 2*np.pi
-phase -= parsed.m_arr
+phase = parsed.reduced_phase # Miguel did not realise the /2pi reduction
 beggining_time = '2023-07-06T14:04:22.913767'
 # phase = phase[10000:]
 sample_rate = 2e4 #1/5 of 10Mhz as s4 or less depending on sampling config
