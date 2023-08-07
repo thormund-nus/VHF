@@ -21,6 +21,24 @@ from obspy.signal.trigger import z_detect
 from obspy.signal.trigger import carl_sta_trig
 from obspy.signal.trigger import trigger_onset
 
+def block_avg(my_arr: np.ndarray, N: int):
+    """Returns a block average of 1D my_arr in blocks of N."""
+    if N == 1:
+        return my_arr
+    return np.mean(my_arr.reshape(np.shape(my_arr)[0]//N, N), axis=1)
+
+def block_avg_tail(my_arr: np.ndarray, N: int):
+    """Block averages the main body, up till last block that might 
+    contain less than N items. Assumes 1D."""
+    if N == 1:
+        return my_arr
+    if np.size(my_arr) % N == 0:
+        return block_avg(my_arr, N)
+    else:
+        result = np.zeros(np.size(my_arr)//N + 1)
+        result[:-1] = block_avg(my_arr[:np.size(my_arr)//N * N], N)
+        result[-1] = np.mean(my_arr[np.size(my_arr)//N * N:])
+        return result
 
 def helper(sampless, avg, sample_rate, skip):
     set2 = []
@@ -69,26 +87,7 @@ num_points = len(phase)
 print("I could parse the file!")
 
 #Phase average calulation
-phases = []
-n = 0
-avg = 5 # average desired
-while n < num_points:
-    if (n + avg - 1) < num_points:
-        tot = 0
-        for i in range(avg):
-            tot += phase[n + i]
-        phases.append(tot / avg)
-    else:
-        tot = 0
-        count = 0
-        while n < num_points:
-            count += 1
-            tot += phase[n]
-            n += 1
-        if count != 0:
-            phases.append(tot / count)
-    n += (avg)
-phase2 = np.array(phases)  
+phase2 = block_avg_tail(phase, avg:=5)
 num_points2 = len(phase2)
 print('average done')
 
@@ -179,28 +178,7 @@ j1 = trr.copy()
 begg = startime + event[0] - 15 # This number can change if looking for further/closer earthquakes 
 fin = startime + event[1] + 15
 j1.trim(begg, fin) #Now we need to cut some of the data as the spectrogram function consumes a lot of memory space
-datas = j1.data
-data = []
-n = 0
-avg2 = 10 # average desired
-while n < len(datas):
-    if (n + avg2 - 1) < len(datas):
-        tot = 0
-        for i in range(avg2):
-            tot += datas[n + i]
-        data.append(tot / avg2)
-    else:
-        tot = 0
-        count = 0
-        while n < len(datas):
-            count += 1
-            tot += datas[n]
-            n += 1
-        if count != 0:
-            data.append(tot / count)
-    n += (avg2)
-
-datar = np.array(data)  
+datar = block_avg_tail(j1.data, avg2:=10)
 print(f'average done event {j}')
 j1 = tr(data = datar)
 j1.stats.delta = timediff * skip * avg2
