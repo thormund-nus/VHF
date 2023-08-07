@@ -174,7 +174,7 @@ trr.plot(handle = True)
 '''
 
 j = 1
-event = (200, 600)
+event = (200, 900)
 j1 = trr.copy()
 begg = startime + event[0] - 15 # This number can change if looking for further/closer earthquakes 
 fin = startime + event[1] + 15
@@ -199,6 +199,7 @@ while n < len(datas):
         if count != 0:
             data.append(tot / count)
     n += (avg2)
+
 datar = np.array(data)  
 print(f'average done event {j}')
 j1 = tr(data = datar)
@@ -209,14 +210,14 @@ j1.stats.station = 'LASER'
 j1.stats.location = 'NUS'
 j1.stats.channel = f'Event {j}'
 print( f'Event {j} started at {startime + event[0]} approximately and lasted {event[1] - event[0]} seconds.')
-j1.spectrogram(cmap = 'terrain')
+j1.spectrogram(cmap = 'terrain', wlen=11, per_lap=0.99)
 # j1.spectrogram(cmap = 'terrain', outfile= 'tmp.png' )
 # j1.plot(handle = True)
 print('\n')
 j += 1
 
 my_fig, my_ax = plt.subplots()
-j1.spectrogram(axes=my_ax, cmap = 'terrain')
+j1.spectrogram(axes=my_ax, cmap = 'terrain', wlen=200, per_lap=0.9999)
 my_ax.set_ylim(0, 30)
 my_fig.savefig('tmp.png')
 
