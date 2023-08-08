@@ -244,17 +244,22 @@ def main():
         # Plot
         fig, ax = plt.subplots()
         cmappable = ax.imshow(Sxx, cmap='terrain', norm=my_norm, interpolation="nearest", extent=ax_extent)
-        fig.colorbar(cmappable, ax=ax, location='right', shrink=1.0, extend='both')  # add colorbar
+        ax_cb = fig.colorbar(cmappable, ax=ax, location='right', shrink=1.0, extend='both')  # add colorbar
 
         ax.tick_params(axis='both', which='major', labelsize=6)
         ax.tick_params(axis='both', which='minor', labelsize=6)
+        ax_cb.ax.tick_params(axis='both', which='major', labelsize=6)
+        ax_cb.ax.tick_params(axis='both', which='minor', labelsize=6)
         
         ax.grid(False)
-        ax.set_xlabel('Time [s]', fontsize=8)
-        ax.set_ylabel('Frequency [Hz]', fontsize=8)
+        ax.set_xlabel('Time [s]', fontsize=6)
+        ax.set_ylabel('Frequency [Hz]', fontsize=6)
+        ax_cb.set_label('Intensity [a.u.]', fontsize=6)
 
         fig.set_size_inches(fig_width:=0.495*(8.3-2*0.6), 0.6*fig_width) # A4 paper is 8.3 inches by 11.7 inches
+        fig.tight_layout()
         ax.axis('tight')
+        fig.subplots_adjust(left=0.110, bottom=0.170, right=0.960, top=0.950)
         plt.show(block=True)
         fig.savefig('for_poster.png', dpi=300, format='png')
         plt.close()
