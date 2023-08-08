@@ -12,6 +12,7 @@ from datetime import timedelta
 from obspy.core import Stream, Trace, Stats
 from obspy.imaging.spectrogram import spectrogram
 from scipy.signal import spectrogram as sp_spectrogram
+from matplotlib import colors
 from matplotlib import mlab
 from matplotlib import pyplot as plt
 import math
@@ -197,24 +198,49 @@ def main():
     # tr = Trace(data=velocity1_avg, header=shoehorn_header)
     # tr.spectrogram(cmap = 'terrain', wlen=shoehorn_header.sampling_rate / 100.0, per_lap=0.90)
     # plt.show()
-    Sxx, f, t, ax_extent = spectrogram_data_array(velocity1_avg, shoehorn_header.sampling_rate,
-                                                shoehorn_header.sampling_rate/100, 0.90)
+    Sxx, f, t, ax_extent = spectrogram_data_array(velocity1_avg, 
+                                                  shoehorn_header.sampling_rate,
+                                                  shoehorn_header.sampling_rate/100, 
+                                                  0.90)
 
     # why does obspy imaging do flipud? line 183
     Sxx = np.flipud(Sxx)
 
     # Array crop to our needs
+    crop_f_ind = 180
+    crop_t_ind = 600
+    Sxx = Sxx[:crop_f_ind, :crop_t_ind]
+    f = f[:crop_f_ind]
+    t = t[:crop_t_ind]
+    halfbin_time = (t[1] - t[0]) / 2.0
+    halfbin_freq = (f[1] - f[0]) / 2.0
+    ax_extent = (t[0] - halfbin_time, t[-1] + halfbin_time,
+                 f[0] - halfbin_freq, f[-1] + halfbin_freq)
+
+    # Force our colormap
+    def c_forward(x):
+        return np.power(x, 4)
+    
+    def c_inv(x):
+        return x**0.25
+
+    print(f"Actual max = {np.max(Sxx)}")
+    my_norm = colors.FuncNorm((c_forward, c_inv), vmin=220, vmax=440)
+    # my_norm = None
 
     # Plot
     fig, ax = plt.subplots()
-    ax.imshow(Sxx, interpolation="nearest", extent=ax_extent, cmap='terrain')
+    cmappable = ax.imshow(Sxx, cmap='terrain', norm=my_norm, interpolation="nearest", extent=ax_extent)
+    fig.colorbar(cmappable, ax=ax, location='right', shrink=1.0, extend='both')  # add colorbar
 
     ax.axis('tight')
     ax.grid(False)
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Frequency [Hz]')
 
-    fig.savefig('_tmp.png')
+    fig.savefig('Spectrum_Mapped.png', dpi=300, format='png')
+    plt.show(block=True)
+    plt.close()
 
 if __name__ == '__main__':
     main()
