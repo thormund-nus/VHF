@@ -20,6 +20,7 @@ import numpy as np
 from parseVHF import VHFparser  # relative import
 from plot_VHF_output import get_radius, get_spec, get_phase, plot_rad_spec
 from pathlib import Path
+from pynverse import inversefunc
 
 def block_avg(my_arr: np.ndarray, N: int):
     """Returns a block average of 1D my_arr in blocks of N."""
@@ -162,8 +163,8 @@ def main():
     file1 = data_dir.joinpath('2023-07-06T14:04:22.913767_s499_q268435456_F0_laser2_3674mA_20km.bin')
     parsed1 = VHFparser(file1)
 
-    start_time = 200 # seconds
-    end_time = 700
+    start_time = 150 # seconds
+    end_time = 650
     start_index, end_index = crop_indices(
         start_time, 
         end_time, 
@@ -207,8 +208,8 @@ def main():
     Sxx = np.flipud(Sxx)
 
     # Array crop to our needs
-    crop_f_ind = 180
-    crop_t_ind = 600
+    crop_f_ind = 160
+    crop_t_ind = 700
     Sxx = Sxx[:crop_f_ind, :crop_t_ind]
     f = f[:crop_f_ind]
     t = t[:crop_t_ind]
@@ -217,30 +218,50 @@ def main():
     ax_extent = (t[0] - halfbin_time, t[-1] + halfbin_time,
                  f[0] - halfbin_freq, f[-1] + halfbin_freq)
 
-    # Force our colormap
-    def c_forward(x):
-        return np.power(x, 4)
+    matplotlib = True
+    if matplotlib:
+        # Force our colormap
+        def lemma(x):
+            return np.piecewise(x, [x<0, x>=0], [0, lambda x: np.exp(-1/x)])
+        def my_sig(x):
+            # print(f"my_sig called! [Debug] {x = }\n[Debug] {type(x) = }")
+            result = lemma(x)/(lemma(x)+lemma(1-x))
+            # print(f"[Debug] {result = }\n[Debug] {result.mask.any() = }")
+            return result
+
+        def c_forward(x):
+            # print(f"c_forward with x = {x}")
+            return my_sig((x-270)/120 + 0.5)+0.003*(x-1200)
+
+        # def c_inv(x):
+            # print(f"c_backward with x = {x}")
+        c_inv = inversefunc(c_forward, domain=(-1200,1200))
+
+        print(f"Actual max = {np.max(Sxx)}")
+        my_norm = colors.FuncNorm((c_forward, c_inv), vmin=180, vmax=440)
+        # my_norm = None
+
+        # Plot
+        fig, ax = plt.subplots()
+        cmappable = ax.imshow(Sxx, cmap='terrain', norm=my_norm, interpolation="nearest", extent=ax_extent)
+        fig.colorbar(cmappable, ax=ax, location='right', shrink=1.0, extend='both')  # add colorbar
+
+        ax.tick_params(axis='both', which='major', labelsize=6)
+        ax.tick_params(axis='both', which='minor', labelsize=6)
+        
+        ax.grid(False)
+        ax.set_xlabel('Time [s]', fontsize=8)
+        ax.set_ylabel('Frequency [Hz]', fontsize=8)
+
+        fig.set_size_inches(fig_width:=0.495*(8.3-2*0.6), 0.6*fig_width) # A4 paper is 8.3 inches by 11.7 inches
+        ax.axis('tight')
+        plt.show(block=True)
+        fig.savefig('for_poster.png', dpi=300, format='png')
+        plt.close()
     
-    def c_inv(x):
-        return x**0.25
-
-    print(f"Actual max = {np.max(Sxx)}")
-    my_norm = colors.FuncNorm((c_forward, c_inv), vmin=220, vmax=440)
-    # my_norm = None
-
-    # Plot
-    fig, ax = plt.subplots()
-    cmappable = ax.imshow(Sxx, cmap='terrain', norm=my_norm, interpolation="nearest", extent=ax_extent)
-    fig.colorbar(cmappable, ax=ax, location='right', shrink=1.0, extend='both')  # add colorbar
-
-    ax.axis('tight')
-    ax.grid(False)
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Frequency [Hz]')
-
-    fig.savefig('Spectrum_Mapped.png', dpi=300, format='png')
-    plt.show(block=True)
-    plt.close()
+    gnuplot = False
+    if gnuplot:
+        Sxx = TODO
 
 if __name__ == '__main__':
     main()
