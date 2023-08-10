@@ -9,18 +9,19 @@ if module_path not in sys.path:
     sys.path.append(module_path)
 
 from datetime import timedelta
-from obspy.core import Stream, Trace, Stats
-from obspy.imaging.spectrogram import spectrogram
-from scipy.signal import spectrogram as sp_spectrogram
 from matplotlib import colors
 from matplotlib import mlab
 from matplotlib import pyplot as plt
 import math
 import numpy as np
+import numpy.typing as npt
+from obspy.core import Stream, Trace, Stats
+from obspy.imaging.spectrogram import spectrogram
 from parseVHF import VHFparser  # relative import
 from plot_VHF_output import get_radius, get_spec, get_phase, plot_rad_spec
 from pathlib import Path
 from pynverse import inversefunc
+from typing import Callable
 
 def block_avg(my_arr: np.ndarray, N: int):
     """Returns a block average of 1D my_arr in blocks of N."""
@@ -153,6 +154,18 @@ def spectrogram_data_array(data, samp_rate, wlen=None, per_lap=0.9, dbscale=Fals
                  freq[0] - halfbin_freq, freq[-1] + halfbin_freq)
     return specgram, freq, time, ax_extent
 
+cond_type = Callable[[npt.NDArray[np.float64]], npt.NDArray[np.bool_]]
+def spectrogram_crop(Sxx: np.ndarray, f: np.ndarray, t: np.ndarray,
+                     f_cond: cond_type, t_cond: cond_type):
+    """Function to crop Sxx to within f and t bounds (in natural units)."""
+
+    # Allow for accepting no filtering
+    if f_cond == None:
+        f_cond = lambda x: np.full(np.shape(x), True)
+    if t_cond == None:
+        t_cond = lambda x: np.full(np.shape(x), True)
+    return Sxx[f_cond(f), ...][..., t_cond(t)], f[f_cond(f)], t[t_cond(t)]
+
 def main():
     base_dir = Path(__file__).parent
     data_dir = base_dir.joinpath('Data')
@@ -202,17 +215,15 @@ def main():
     Sxx, f, t, ax_extent = spectrogram_data_array(velocity1_avg, 
                                                   shoehorn_header.sampling_rate,
                                                   shoehorn_header.sampling_rate/100, 
-                                                  0.90)
+                                                  0.98)
 
     # why does obspy imaging do flipud? line 183
     Sxx = np.flipud(Sxx)
 
     # Array crop to our needs
-    crop_f_ind = 160
-    crop_t_ind = 700
-    Sxx = Sxx[:crop_f_ind, :crop_t_ind]
-    f = f[:crop_f_ind]
-    t = t[:crop_t_ind]
+    Sxx, f, t = spectrogram_crop(Sxx, f, t, lambda f: f<=30, lambda t: t<=350)
+    # Sxx, f, t = spectrogram_crop(Sxx, f, t, None, None)
+    # account for cropped Sxx
     halfbin_time = (t[1] - t[0]) / 2.0
     halfbin_freq = (f[1] - f[0]) / 2.0
     ax_extent = (t[0] - halfbin_time, t[-1] + halfbin_time,
@@ -243,7 +254,7 @@ def main():
 
         # Plot
         fig, ax = plt.subplots()
-        cmappable = ax.imshow(Sxx, cmap='terrain', norm=my_norm, interpolation="nearest", extent=ax_extent)
+        cmappable = ax.imshow(Sxx, cmap='Blues', norm=my_norm, interpolation="nearest", extent=ax_extent)
         ax_cb = fig.colorbar(cmappable, ax=ax, location='right', shrink=1.0, extend='both')  # add colorbar
 
         ax.tick_params(axis='both', which='major', labelsize=6)
@@ -252,9 +263,9 @@ def main():
         ax_cb.ax.tick_params(axis='both', which='minor', labelsize=6)
         
         ax.grid(False)
-        ax.set_xlabel('Time [s]', fontsize=6)
-        ax.set_ylabel('Frequency [Hz]', fontsize=6)
-        ax_cb.set_label('Intensity [a.u.]', fontsize=6)
+        ax.set_xlabel('Time (s)', fontsize=6)
+        ax.set_ylabel('Frequency (Hz)', fontsize=6)
+        ax_cb.set_label('Intensity (a.u.)', fontsize=6)
 
         fig.set_size_inches(fig_width:=0.495*(8.3-2*0.6), 0.6*fig_width) # A4 paper is 8.3 inches by 11.7 inches
         fig.tight_layout()
