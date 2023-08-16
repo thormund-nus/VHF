@@ -12,6 +12,7 @@ from datetime import timedelta
 from matplotlib import colors
 from matplotlib import gridspec
 from matplotlib import mlab
+from matplotlib import patches
 from matplotlib import pyplot as plt
 from matplotlib import transforms
 import math
@@ -316,6 +317,13 @@ def main():
             fontsize='small', va='bottom', fontfamily='sans')
         spec_ax.text(0.0, 1.0, '(b)', transform=spec_ax.transAxes + tr,
             fontsize='small', va='bottom', fontfamily='sans')
+
+        # add circling
+        for cent in [(6.8, 10.75), (72, 11.8), (187.8, 10.3), (223, 10.3), (266, 11.74), (300, 12.26), (323, 12.07)]:
+            c = patches.Ellipse(cent, width=(ell_w:=18),
+                    height=(np.diff(spec_ax.get_ylim())/np.diff(spec_ax.get_xlim()))*ell_w*1.2,
+                    linewidth=1, edgecolor='#ff0000', facecolor='none')
+            spec_ax.add_patch(c)
 
         # plt.show(block=True)
         fig.savefig(base_dir.joinpath('spectrum_miguel.png'), dpi=300, format='png')
