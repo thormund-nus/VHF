@@ -233,7 +233,8 @@ def main():
     if matplotlib:
         # Force our colormap
         def lemma(x):
-            return np.piecewise(x, [x<0, x>=0], [0, lambda x: np.exp(-1/x)])
+            return np.piecewise(x, [x<=0, x>0], [0, lambda x: np.exp(-1/x)])
+
         def my_sig(x):
             # print(f"my_sig called! [Debug] {x = }\n[Debug] {type(x) = }")
             result = lemma(x)/(lemma(x)+lemma(1-x))
