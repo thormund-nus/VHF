@@ -251,14 +251,32 @@ def main():
             # print(f"c_backward with x = {x}")
         c_inv = inversefunc(c_forward, domain=(-1200,1200))
 
-        print(f"Actual max = {np.max(Sxx)}")
+        def trunc_cmap(cmap_name: str, minval: float = 0.0, maxval: float = 1.0, n: int = 255):
+            """Cmap converts numbers between 0 and 1 to a color. Here,
+            we take only a slice of matplotlib's cmap instead."""
+            cm = plt.get_cmap(cmap_name)
+            if minval == 0.0 and maxval == 1.0:
+                return cm
+            new_cmap = colors.LinearSegmentedColormap.from_list(
+                'trunc({n},{a:.2f},{b:.2f})'.format(n=cm.name, a=minval, b=maxval),
+                cm(np.linspace(minval, maxval, n)))
+            return new_cmap
         # my_norm = colors.FuncNorm((c_forward, c_inv), vmin=180, vmax=440)
         my_norm = None
 
         # Plot
+        # 1. Take a relevant slice of the color bar so that the truncated
+        # spectrogram has similar light streaks to what Miguel has done
+        # 2. Specify that all values above 440 for vmax are to be mapped to the
+        # upper end of cmap.
+        # 3. aspect = auto to allow for set_xlim, set_ylim to not squash the ax
         fig, ax = plt.subplots()
-        cmappable = ax.imshow(Sxx, cmap='terrain', norm=my_norm, interpolation="nearest", extent=ax_extent, aspect='auto')
-        ax_cb = fig.colorbar(cmappable, ax=ax, location='right', shrink=1.0, extend='both')  # add colorbar
+        cmappable = ax.imshow(Sxx, cmap=trunc_cmap('terrain', 0, 0.25),
+                              norm=my_norm, interpolation="nearest",
+                              vmax=440,
+                              extent=ax_extent, aspect='auto')
+        # add colorbar
+        ax_cb = fig.colorbar(cmappable, ax=ax, location='right', shrink=1.0, extend='max')
 
         ax.tick_params(axis='both', which='major', labelsize=6)
         ax.tick_params(axis='both', which='minor', labelsize=6)
@@ -269,8 +287,8 @@ def main():
         ax.set_xlabel('Time (s)', fontsize=6)
         ax.set_ylabel('Frequency (Hz)', fontsize=6)
         ax_cb.set_label('Intensity (a.u.)', fontsize=6)
-        ax.set_xlim(0.0, 350.0)
-        ax.set_ylim(1.0, 30)
+        ax.set_xlim(ax_extent[0], 350.0)
+        ax.set_ylim(ax_extent[2], 30)
 
         fig.set_size_inches(fig_width:=0.495*(8.3-2*0.6), 0.6*fig_width) # A4 paper is 8.3 inches by 11.7 inches
         fig.tight_layout()
