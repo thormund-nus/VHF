@@ -221,8 +221,8 @@ def main():
     Sxx = np.flipud(Sxx)
 
     # Array crop to our needs
-    Sxx, f, t = spectrogram_crop(Sxx, f, t, lambda f: f<=30, lambda t: t<=350)
-    # Sxx, f, t = spectrogram_crop(Sxx, f, t, None, None)
+    # Sxx, f, t = spectrogram_crop(Sxx, f, t, lambda f: f<=30, lambda t: t<=350)
+    Sxx, f, t = spectrogram_crop(Sxx, f, t, None, None)
     # account for cropped Sxx
     halfbin_time = (t[1] - t[0]) / 2.0
     halfbin_freq = (f[1] - f[0]) / 2.0
@@ -250,12 +250,12 @@ def main():
         c_inv = inversefunc(c_forward, domain=(-1200,1200))
 
         print(f"Actual max = {np.max(Sxx)}")
-        my_norm = colors.FuncNorm((c_forward, c_inv), vmin=180, vmax=440)
-        # my_norm = None
+        # my_norm = colors.FuncNorm((c_forward, c_inv), vmin=180, vmax=440)
+        my_norm = None
 
         # Plot
         fig, ax = plt.subplots()
-        cmappable = ax.imshow(Sxx, cmap='Blues', norm=my_norm, interpolation="nearest", extent=ax_extent)
+        cmappable = ax.imshow(Sxx, cmap='terrain', norm=my_norm, interpolation="nearest", extent=ax_extent, aspect='auto')
         ax_cb = fig.colorbar(cmappable, ax=ax, location='right', shrink=1.0, extend='both')  # add colorbar
 
         ax.tick_params(axis='both', which='major', labelsize=6)
@@ -267,13 +267,16 @@ def main():
         ax.set_xlabel('Time (s)', fontsize=6)
         ax.set_ylabel('Frequency (Hz)', fontsize=6)
         ax_cb.set_label('Intensity (a.u.)', fontsize=6)
+        ax.set_xlim(0.0, 350.0)
+        ax.set_ylim(1.0, 30)
 
         fig.set_size_inches(fig_width:=0.495*(8.3-2*0.6), 0.6*fig_width) # A4 paper is 8.3 inches by 11.7 inches
         fig.tight_layout()
-        ax.axis('tight')
-        fig.subplots_adjust(left=0.110, bottom=0.170, right=0.960, top=0.950)
-        plt.show(block=True)
-        fig.savefig('for_poster.png', dpi=300, format='png')
+        # ax.axis('tight')
+        fig.subplots_adjust(left=0.115, bottom=0.170, right=0.960, top=0.950)
+
+        # plt.show(block=True)
+        fig.savefig(base_dir.joinpath('spectrum_miguel.png'), dpi=300, format='png')
         plt.close()
     
     gnuplot = False
