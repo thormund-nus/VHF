@@ -13,6 +13,7 @@ from matplotlib import colors
 from matplotlib import gridspec
 from matplotlib import mlab
 from matplotlib import pyplot as plt
+from matplotlib import transforms
 import math
 import numpy as np
 import numpy.typing as npt
@@ -307,7 +308,14 @@ def main():
         fig.set_size_inches(fig_width:=0.495*(8.3-2*0.6), 1.0*fig_width) # A4 paper is 8.3 inches by 11.7 inches
         fig.tight_layout()
         # ax.axis('tight')
-        fig.subplots_adjust(left=0.110, bottom=0.110, right=0.880, top=0.950)
+        fig.subplots_adjust(left=0.110, bottom=0.095, right=0.880, top=0.955)
+
+        # add labels
+        tr = transforms.ScaledTranslation(-27/72, 2/72, fig.dpi_scale_trans)
+        ph_ax.text(0.0, 1.0, '(a)', transform=ph_ax.transAxes + tr,
+            fontsize='small', va='bottom', fontfamily='sans')
+        spec_ax.text(0.0, 1.0, '(b)', transform=spec_ax.transAxes + tr,
+            fontsize='small', va='bottom', fontfamily='sans')
 
         # plt.show(block=True)
         fig.savefig(base_dir.joinpath('spectrum_miguel.png'), dpi=300, format='png')
