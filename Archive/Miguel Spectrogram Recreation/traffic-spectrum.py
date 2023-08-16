@@ -10,6 +10,7 @@ if module_path not in sys.path:
 
 from datetime import timedelta
 from matplotlib import colors
+from matplotlib import gridspec
 from matplotlib import mlab
 from matplotlib import pyplot as plt
 import math
@@ -228,8 +229,8 @@ def main():
     # account for cropped Sxx
     halfbin_time = (t[1] - t[0]) / 2.0
     halfbin_freq = (f[1] - f[0]) / 2.0
-    ax_extent = (t[0] - halfbin_time, t[-1] + halfbin_time,
-                 f[0] - halfbin_freq, f[-1] + halfbin_freq)
+    spec_ax_extent = (t[0] - halfbin_time, t[-1] + halfbin_time,
+                      f[0] - halfbin_freq, f[-1] + halfbin_freq)
 
     matplotlib = True
     if matplotlib:
@@ -270,30 +271,43 @@ def main():
         # 2. Specify that all values above 440 for vmax are to be mapped to the
         # upper end of cmap.
         # 3. aspect = auto to allow for set_xlim, set_ylim to not squash the ax
-        fig, ax = plt.subplots()
-        cmappable = ax.imshow(Sxx, cmap=trunc_cmap('terrain', 0, 0.25),
+        fig = plt.figure()
+        gs = gridspec.GridSpec(nrows=2, ncols=2, figure=fig,
+            wspace=0.1,
+            height_ratios=[2, 3], width_ratios=[1, .03])
+        ph_ax = plt.subplot(gs[0, 0])
+        spec_ax = plt.subplot(gs[1, 0], sharex=ph_ax)
+        colb_ax = plt.subplot(gs[1, 1])
+
+        # plot spectrogram
+        cmappable = spec_ax.imshow(Sxx, cmap=trunc_cmap('terrain', 0, 0.25),
                               norm=my_norm, interpolation="nearest",
                               vmax=440,
-                              extent=ax_extent, aspect='auto')
+                              extent=spec_ax_extent, aspect='auto')
+        spec_ax.grid(False)
+
         # add colorbar
-        ax_cb = fig.colorbar(cmappable, ax=ax, location='right', shrink=1.0, extend='max')
+        plt.colorbar(cmappable, cax=colb_ax, shrink=1.0, extend='max')
 
-        ax.tick_params(axis='both', which='major', labelsize=6)
-        ax.tick_params(axis='both', which='minor', labelsize=6)
-        ax_cb.ax.tick_params(axis='both', which='major', labelsize=6)
-        ax_cb.ax.tick_params(axis='both', which='minor', labelsize=6)
+        # plot phase(time)
+        ph_ax.plot(np.arange(len(phase1))/2e4, phase1/1e3,
+            color='#0000ff', linewidth=0.2)
+
+        spec_ax.tick_params(axis='both', which='major', labelsize=6)
+        colb_ax.tick_params(axis='both', which='major', labelsize=6)
+        ph_ax.tick_params(axis='both', which='major', labelsize=6)
         
-        ax.grid(False)
-        ax.set_xlabel('Time (s)', fontsize=6)
-        ax.set_ylabel('Frequency (Hz)', fontsize=6)
-        ax_cb.set_label('Intensity (a.u.)', fontsize=6)
-        ax.set_xlim(ax_extent[0], 350.0)
-        ax.set_ylim(ax_extent[2], 30)
+        spec_ax.set_xlabel('Time (s)', fontsize=6)
+        spec_ax.set_ylabel('Frequency (Hz)', fontsize=6)
+        colb_ax.set_ylabel('Intensity (a.u.)', fontsize=6)
+        ph_ax.set_ylabel('$\phi_d$ ($2\pi \cdot 10^3$ rad)', fontsize=6, usetex=True)
+        spec_ax.set_xlim(ax_extent[0], 350.0)
+        spec_ax.set_ylim(ax_extent[2], 30)
 
-        fig.set_size_inches(fig_width:=0.495*(8.3-2*0.6), 0.6*fig_width) # A4 paper is 8.3 inches by 11.7 inches
+        fig.set_size_inches(fig_width:=0.495*(8.3-2*0.6), 1.0*fig_width) # A4 paper is 8.3 inches by 11.7 inches
         fig.tight_layout()
         # ax.axis('tight')
-        fig.subplots_adjust(left=0.115, bottom=0.170, right=0.960, top=0.950)
+        fig.subplots_adjust(left=0.110, bottom=0.110, right=0.880, top=0.950)
 
         # plt.show(block=True)
         fig.savefig(base_dir.joinpath('spectrum_miguel.png'), dpi=300, format='png')
