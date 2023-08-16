@@ -164,6 +164,8 @@ def spectrogram_crop(Sxx: np.ndarray, f: np.ndarray, t: np.ndarray,
         f_cond = lambda x: np.full(np.shape(x), True)
     if t_cond == None:
         t_cond = lambda x: np.full(np.shape(x), True)
+    if f_cond == None and t_cond == None:
+        return Sxx, f, t
     return Sxx[f_cond(f), ...][..., t_cond(t)], f[f_cond(f)], t[t_cond(t)]
 
 def main():
