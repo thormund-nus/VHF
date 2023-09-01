@@ -5,6 +5,7 @@ VHFRunner is a config parser that aims to simplify subprocess arguments.
 """
 import configparser
 import datetime
+import logging
 from enum import Enum
 from os import PathLike
 from os.path import realpath
@@ -13,6 +14,7 @@ from shlex import quote
 from typing import Any
 from typing import IO
 from typing import Iterable
+from typing import Mapping
 from typing import Union
 
 __all__ = ["VHFRunner"]
@@ -105,7 +107,8 @@ class Encode(EnumWithAttrs):
 class VHFRunner():
     """Configparses config file into appropriate strings for subprocess."""
 
-    def __init__(self, conf_file: _PATH, force_to_buffer: bool = False):
+    def __init__(self, conf_file: _PATH, force_to_buffer: bool = False,
+                 overwrite_properties: Mapping = dict()):
         """VHFRunner oversees the necessary conditions to pass into
         subprocess for sampling data with VHF board from config file.
 
@@ -118,16 +121,18 @@ class VHFRunner():
         force_to_buffer: bool
             If true, disregards conf_file's save_to_file option.
         """
+        self.__createLogger()
+
         # Resolve paths automagically with ExtendedInterpoliation
         conf = configparser.ConfigParser(
             interpolation=configparser.ExtendedInterpolation())
         conf.read(conf_file)
 
         # Board parameters
-        self.num_samples = int(eval(conf['Board']['num_samples']))
-        self.skip_num = int(eval(conf['Board']['skip_num']))
-        self.speed = SamplingSpeed.from_str(conf['Board']['speed'])
-        self.encode = Encode.from_str(conf['Board']['encode'])
+        self.num_samples = int(eval(conf.get('Board', 'num_samples')))
+        self.skip_num = int(eval(conf.get('Board', 'skip_num')))
+        self.speed = SamplingSpeed.from_str(conf.get('Board', 'speed'))
+        self.encode = Encode.from_str(conf.get('Board', 'encode'))
         # Map board parameters to corresponding VHF exec flag
         self._board_mappable = {'num_samples': 'q', 'skip_num': 's', }
         # Use enum attrs to get corresponding flag
@@ -141,7 +146,7 @@ class VHFRunner():
                 # x_enable keys determine if to save x key
                 if conf.has_option('Board', k+'_enable'):
                     if conf['Board'][k+'_enable'] == 'False' \
-                            or conf['Board'][k+'_enable'] is False:
+                            or conf.getboolean('Board', k+'_enable') is False:
                         continue
 
                 self.board_kwargs[k] = v
@@ -160,7 +165,44 @@ class VHFRunner():
         # Pass via stdout vs to a file
         self.to_file = conf.getboolean('Paths', 'save_to_file')
         if force_to_buffer:
-            self.to_file = True
+            self.to_file = False
+
+        # Overwrite properties read from file via script
+        if len(overwrite_properties) > 0:
+            self._overwrite_attr(overwrite_properties)
+
+    def __createLogger(self):
+        self.logger = logging.getLogger('VHFRunner')
+
+    def _overwrite_attr(self, p: Mapping) -> None:
+        """
+        Overwrite existing known attrs in config file with those in script.
+
+        Defaults to self.board_kwargs for attrs passed via here that are not
+        previously instantised via the config file.
+        """
+        # Set of known keys
+        rel_k = [list(self._board_mappable), self._board_unmappable,
+                 list(self.board_kwargs), list(self.phasemeter_kwargs),
+                 list(self.path)]
+
+        for key, v in p.items():
+            if key in flatten(rel_k):
+                # To find in which kwarg to then overwrite in
+                for section in rel_k:
+                    if key in section:
+                        if section in rel_k[:2]:
+                            setattr(self, key, v)
+                        else:
+                            getattr(self, section)[key] = v
+                        break
+
+            else:
+                self.logger.warning(
+                    'Unrecognised key in overwrite_properties: %s', key)
+                print(f"'overwrite_properties' contains unknown key {key} "
+                      "and will be added into self.board_kwargs.")
+                self.board_kwargs[key] = v
 
     def sample_time(self) -> float:
         """Return the amount of time in seconds to perform sampling."""
