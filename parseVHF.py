@@ -120,9 +120,15 @@ class VHFparser:
     def _init_buffer(self, buffer):
         """For bufferedRandom."""
         header = buffer.read(8)
-        if 0xFFFFFFFFFFFF0000 & int.from_bytes(header, "little") != 0x123456ABCDEF0000:
+        actual = (0xFFFFFFFFFFFF0000 & int.from_bytes(header, "little"))
+        expected = 0x123456ABCDEF0000
+        if actual != expected:
             self.logger.error(
                 "Buffer not found to conform to header expectations.")
+            self.logger.debug(
+                "Buffer read(1024): %s", header +
+                buffer.read(min(1024, self.filesize-8))
+            )
             raise ValueError(
                 "Buffer does not conform to header expectations.")
 
@@ -157,7 +163,7 @@ class VHFparser:
 
     def _datetime_aware(self, dt: datetime) -> bool:
         """Determine if a datetime object is aware, or otherwise (naive)."""
-        # doc: https://docs.python.org/3/library/datetime.html#determining-if-an-object-is-aware-or-naive
+        # doc: https://docs.python.org/3/library/datetime.html#determining-if-an-object-is-aware-or-naive # noqa: E501
         # Resorts to False and undefined -> False
         return dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) is not None
 
@@ -230,14 +236,14 @@ class VHFparser:
             self._fix_overflow_m()
 
     def parse_header(self, header_raw: bytes):
-        """Bytes as read from header of bin files is converted into a header property."""
+        """Convert binary file header into a header property."""
         if header_raw is None:
             raise ValueError("header_raw was not given.")
 
         # init
         self.header: dict = dict()
         header_raw: list[bytes] = header_raw.split(b"# ")[1:]
-        print(f"Debug: {header_raw = }")
+        self.logger.debug("parsed_header recieved header_raw = %s", header_raw)
         for x in header_raw[0].split(b" -")[1:]:  # command line record
             x = x.decode().strip(" ")
             self.header[x[0]] = x[1:].strip()
@@ -258,21 +264,26 @@ class VHFparser:
         elif 'h' in self.header:
             self.header["base sampling freq"] = 20e6
         else:
+            self.logger.warning(
+                "Sampling frequency was not explictly given in header. "
+                "Defaulting to 20 MHz.")
             self.header["base sampling freq"] = 20e6
 
-        if self.header['s'] is not None:
-            self.header["sampling freq"] = self.header["base sampling freq"] / (
-                1 + self.header["s"]
-            )
+        if 's' in self.header and self.header['s'] is not None:
+            self.header["sampling freq"] = (self.header["base sampling freq"]
+                                            / (1 + self.header["s"]))
+        else:
+            self.header["sampling freq"] = self.header["base sampling freq"]
 
     @cached_property
     def _potential_m_overflow(self) -> bool:
-        """Return true if there exists elements in self.m_arr close exceeds +-tol."""
+        """Determine if elements in self.m_arr close exceeds +-tol."""
         # Used to calibrate invokation of _m_fix()
         tol: int = 0x7F00
         if tol < 0:
             raise ValueError
-        if np.size(np.where(self.m_arr > tol)) + np.size(np.where(self.m_arr < -tol)) > 0:
+        if (np.size(np.where(self.m_arr > tol))
+                + np.size(np.where(self.m_arr < -tol))) > 0:
             return True
         return False
 
@@ -290,8 +301,8 @@ class VHFparser:
             deltas = np.diff(self.m_arr)  # subtraction between views
             # 2. now round towards +-1
             tol = 0xF000  # keep as int
-            deltas = np.greater(deltas, tol).astype(
-                int) - np.less(deltas, -tol).astype(int)
+            deltas = (np.greater(deltas, tol).astype(int)
+                      - np.less(deltas, -tol).astype(int))
             # 3. finally fix
             self.m_arr[1:] -= 0x10000 * np.cumsum(deltas)
             self._fix_m_called = True
@@ -300,11 +311,10 @@ class VHFparser:
 
     @cached_property
     def reduced_phase(self):
-        """Obtains phase(time)/2pi for the given file.
+        """Obtain phase(time)/2pi for the given file.
 
         phase is obtained by atan(Q/I).
         """
-
         # Account for 16 bit overflow of m.
         if not self._fix_m_called and self._potential_m_overflow:
             self._fix_overflow_m()
@@ -322,16 +332,3 @@ class VHFparser:
         """
         radii = np.sqrt(np.power(self.q_arr, 2) + np.power(self.i_arr, 2))
         return radii
-
-
-if __name__ == "__main__":
-    # x = VHFparser(os.path.join(os.path.dirname(__file__), 'vhf_func_gen/Data/60.000_020MHz.txt'))
-    # print(f'{x.header = }')
-    # print(f"{x.m_arr[-12:] = }")
-
-    print()
-    y = VHFparser(os.path.join(os.path.dirname(__file__),
-                               'Data/2023-05-16T15:20:51.480758_s4_q10000.bin'))
-    # print(f'{y.header = }')
-    # print(f'{y.i_arr[:12] = }\n{y.m_arr[:12] = }')
-    # print(f"{y.i_arr[-5:] = }\n{y.m_arr[-5:] = }")
