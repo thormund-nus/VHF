@@ -34,6 +34,7 @@ class VHFparser:
     Run-time available properties
     -----
     reduced_phase: Phase/2pi array
+    radii: I^2 + Q^2 array. Division by N points is not done.
     """
 
     def __init__(self, filename: str | os.PathLike | BufferedRandom, *,
@@ -312,6 +313,15 @@ class VHFparser:
         phase /= 2*np.pi
         phase -= self.m_arr
         return phase
+
+    @cached_property
+    def radii(self):
+        """Obtains radius(time) for the given file.
+
+        Radius is obtained by sqrt(Q^2 + I^2).
+        """
+        radii = np.sqrt(np.power(self.q_arr, 2) + np.power(self.i_arr, 2))
+        return radii
 
 
 if __name__ == "__main__":
