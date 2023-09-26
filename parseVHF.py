@@ -1,43 +1,59 @@
+
 from datetime import datetime
+from datetime import timedelta
 from functools import cached_property
 import logging
 import numpy as np
 import os
-import re
-import struct
 from _io import BufferedRandom
 
 
 class VHFparser:
     # Written with reference to SVN r14
-    """ 
+    """
     Class that parses binary, hexadecimal and ASCII output from VHF board,
     from file objects and data streams.
 
+    Init arguments
+    -----
+    start_time: datetime.datetime compatible
+    end_time: datetime.datetime compatible
+        Trims VHFparser.data and derived objects at init-time to be bounded
+        within start_time and end_time
+
     Init-time available properties
     -----
-    filesize: Number of bytes 
+    filesize: Number of bytes
     header: Dictionary containing all paramaters used to call runVHF
 
     Available methods
     -----
-    parse_header: Gets relevant front number of bytes and returns 
-    read_words_numpy: Converts binary words into (Q,I,M) arrays
+    parse_header: Gets relevant front number of bytes and returns
+    read_words_numpy: Converts binary words into (Q, I, M) arrays
 
     Run-time available properties
     -----
     reduced_phase: Phase/2pi array
     """
 
-    def __init__(self, filename: str | os.PathLike | BufferedRandom):
+    def __init__(self, filename: str | os.PathLike | BufferedRandom, *,
+                 start_time: datetime | None = None,
+                 end_time: datetime | None = None):
         """Take a VHF output file and populates relevant properties."""
         self.__create_logger()
         self.logger.info('VHF parser has been run for file: %s', filename)
+
+        # init guard: parse time params
+        if start_time is not None:
+            assert isinstance(start_time, datetime)
+        if end_time is not None:
+            assert isinstance(end_time, datetime)
+
         # Create class specific modifiers
         self._num_read_bytes = 0
         self._fix_m_called = False
 
-        # Begin Parsing logic
+        # init: Begin Parsing logic, populating header
         if isinstance(filename, BufferedRandom):
             self.filesize = filename.tell()
             filename.seek(0)
@@ -50,8 +66,24 @@ class VHFparser:
             print("No file-like/buffer object given to init.")
             return
 
-        # populate body "data"
+        # init: Populate body "data" to within (start_time, end_time)
+        # Available data in file in contrast to header['s']'s expected
+        # file-length in the event that sampling
         max_data_size = int((self.filesize - self._num_read_bytes) / 8)
+        if end_time is not None:
+            # cast both to offset-aware if either times are
+            if (self._datetime_aware(end_time)
+                    ^ self._datetime_aware(self.header["Time start"])):
+                end_time, self.header["Time start"] = self._coerce_dt_aware(
+                    end_time, self.header["Time start"])
+            target_diff = end_time - self.header["Time start"]
+            # ensure to invoke only file is exceeds time argument bounds
+            if (t_diff_s := target_diff.total_seconds()) > 0:
+                max_data_size = int((
+                    t_diff_s * self.header["sampling freq"])
+                )
+
+        # now read to right boundary of file
         self.data = np.memmap(
             filename,
             dtype=np.dtype(np.uint64).newbyteorder("<"),
@@ -59,8 +91,22 @@ class VHFparser:
             offset=self._num_read_bytes,
             shape=(max_data_size,),
         )
-        # get (I, Q, M)
+
+        # init: get (I, Q, M)
         self.read_words_numpy(self.data)
+
+        # shape has trimmed all data after end_time, _drop_left to trim before
+        # start_time, which can only be done after obtaining (I, Q, M)
+        if start_time is not None:
+            if (self._datetime_aware(start_time)
+                    ^ self._datetime_aware(self.header["Time start"])):
+                start_time, self.header["Time start"] = self._coerce_dt_aware(
+                    start_time, self.header["Time start"]
+                )
+            target_diff = start_time - self.header["Time start"]
+
+            if (t_diff_s := target_diff.total_seconds()) > 0:
+                self._drop_left(int(t_diff_s * self.header["sampling freq"]))
 
     def __create_logger(self):
         self.logger = logging.getLogger("vhfparser")
@@ -85,6 +131,55 @@ class VHFparser:
         self._num_read_bytes += header_count
         self.headerraw: bytes = buffer.read((header_count)).rstrip(b"\x00")
         self.parse_header(self.headerraw)
+
+    def _drop_left(self, val: int):
+        """Mutates self.data and derivatives by dropping val number of points.
+
+        Timing information is correspondingly updated.
+        """
+        try:
+            val = int(val)
+        except TypeError:
+            raise ValueError(f"{val = } given could not be cast to int!")
+        if val == 0:
+            # Nothing to do
+            return
+        elif val < 0:
+            raise ValueError(f"{val = } given is too small!")
+
+        self.i_arr = self.i_arr[val:]
+        self.q_arr = self.q_arr[val:]
+        self.m_arr = self.m_arr[val:]
+        self.header["Time start"] += timedelta(
+            seconds=(val / self.header["sampling freq"]))
+        self.data = self.data[val:]
+
+    def _datetime_aware(self, dt: datetime) -> bool:
+        """Determine if a datetime object is aware, or otherwise (naive)."""
+        # doc: https://docs.python.org/3/library/datetime.html#determining-if-an-object-is-aware-or-naive
+        # Resorts to False and undefined -> False
+        return dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) is not None
+
+    def _coerce_dt_aware(self, dt1: datetime,
+                         dt2: datetime) -> tuple[datetime, datetime]:
+        """Coerces one datetime object to be aware like the other object.
+
+        Datetime objects are not orderable if exclusively one is 'aware'.
+        The naive object is forced to inherit the aware datetime object tzinfo.
+        """
+        if self._datetime_aware(dt1) ^ self._datetime_aware(dt2):
+            # No coercion required
+            return dt1, dt2
+
+        # determine which to convert, and inherit timeone from the other
+        if self._datetime_aware(dt1):
+            dt2 = dt2.astimezone(dt1.tzinfo)
+        elif self._datetime_aware(dt2):
+            dt1 = dt1.astimezone(dt2.tzinfo)
+        else:
+            # Logical error
+            raise NotImplementedError
+        return dt1, dt2
 
     # def read_word(self, b: bytes, idx=int):
     #     """converts 8 bytes in (I, Q, M)."""
