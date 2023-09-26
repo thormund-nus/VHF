@@ -93,9 +93,6 @@ class VHFparser:
             shape=(max_data_size,),
         )
 
-        # init: get (I, Q, M)
-        self.read_words_numpy(self.data)
-
         # shape has trimmed all data after end_time, _drop_left to trim before
         # start_time, which can only be done after obtaining (I, Q, M)
         if start_time is not None:
@@ -108,6 +105,9 @@ class VHFparser:
 
             if (t_diff_s := target_diff.total_seconds()) > 0:
                 self._drop_left(int(t_diff_s * self.header["sampling freq"]))
+
+        # init: get (I, Q, M)
+        self.read_words_numpy(self.data)
 
     def __create_logger(self):
         self.logger = logging.getLogger("vhfparser")
@@ -154,9 +154,6 @@ class VHFparser:
         elif val < 0:
             raise ValueError(f"{val = } given is too small!")
 
-        self.i_arr = self.i_arr[val:]
-        self.q_arr = self.q_arr[val:]
-        self.m_arr = self.m_arr[val:]
         self.header["Time start"] += timedelta(
             seconds=(val / self.header["sampling freq"]))
         self.data = self.data[val:]
