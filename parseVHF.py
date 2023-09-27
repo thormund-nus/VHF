@@ -171,7 +171,7 @@ class VHFparser:
         Datetime objects are not orderable if exclusively one is 'aware'.
         The naive object is forced to inherit the aware datetime object tzinfo.
         """
-        if self._datetime_aware(dt1) ^ self._datetime_aware(dt2):
+        if not (self._datetime_aware(dt1) ^ self._datetime_aware(dt2)):
             # No coercion required
             return dt1, dt2
 
