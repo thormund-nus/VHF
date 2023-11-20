@@ -258,7 +258,7 @@ class VHFRunner():
             result_unmappable_extend(result, m)
         # hardcoded x_enabled flags
         if 'vga_num' in self.board_kwargs:
-            result.extend(['-g', self.board_kwargs['vga_num']])
+            result.extend(['-G', self.board_kwargs['vga_num']])
         if 'filter_const' in self.board_kwargs:
             result.extend(['-F', self.board_kwargs['filter_const']])
         # other board params
