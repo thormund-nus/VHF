@@ -280,6 +280,9 @@ class VHFRunner():
 
         # Filename generated
         if self.to_file:
+            if ' ' in self.path["save_dir"]:
+                raise ValueError(
+                    "Save directory has spaces included in it. Please use a different directory.")
             fn = datetime.datetime.now().isoformat() + \
                 "".join(result[3:]).replace('-', '_')
             fn += '_' + '_'.join(flatten(self.phasemeter_kwargs.items()))
@@ -300,6 +303,8 @@ class VHFRunner():
             'cwd': self.path['base_dir'],
             'timeout': 7 + self.sample_time()
         }
+        self.logger.debug("subprocess_run called. Returning %s", result)
+
         if self.to_file:
             result['capture_output'] = True
         else:
