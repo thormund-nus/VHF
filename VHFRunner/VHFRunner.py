@@ -210,19 +210,32 @@ class VHFRunner():
 
     def inform_params(self) -> None:
         """Print enabled configurations."""
+        sf = self.speed.freq/(1+self.skip_num)  # sampling freq
+        if sf < 1e3:
+            print(f"Sampling at {sf:.4f} Hz.")
+        elif sf < 1e6:
+            print(f"Sampling at {sf/1e3:.4f} kHz.")
+        elif sf < 1e9:
+            print(f"Sampling at {sf/1e6:.4f} MHz.")
+        else:
+            print(f"Sampling at {sf} Hz.")
+
         if 'vga_num' in self.board_kwargs:
             print("Onboard gain has been set to: "
                   f"{BLUE}{self.board_kwargs['vga_num']}{RESET}.")
         if 'filter_const' in self.board_kwargs:
             print("Filter constant has been set to: "
                   f"{BLUE}{self.board_kwargs['filter_const']}{RESET}.")
+
         print("Phasemeter details used: "
               f"{BLUE}{self.phasemeter_kwargs}{RESET}.")
         print(f"Directory to be saved to {RED}{self.path['save_dir']}{RESET}")
+
         if self.to_file:
             print(f"Output will be written to {BLUE}files{RESET}.")
         else:
             print(f"Output will be captured from {BLUE}STDIN{RESET}.")
+
         st = self.sample_time()
         if st < 60:
             print(f"Sampling is expected to take {REDBOLD}{st:.2f} s{RESET}.")
@@ -270,6 +283,7 @@ class VHFRunner():
             fn = datetime.datetime.now().isoformat() + \
                 "".join(result[3:]).replace('-', '_')
             fn += '_' + '_'.join(flatten(self.phasemeter_kwargs.items()))
+            fn += "." + self.encode.ext
             fn = qs(Path(self.path['save_dir']).joinpath(fn).resolve())
             result.extend(['-o', fn])
         return result
