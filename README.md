@@ -45,6 +45,19 @@ for collecting 'stream' data.
 
 ### Plotting Data
 
+
+Additional details:  
+1. ISO datetime  
+In the process of plotting data, git-svn-id: svn://usbhybrid@12 introduced
+timing information of the command being recorded straight into the data header.
+With string format specifier `%F %T %z`, it is not an ISO-8601 compliant string,
+but Python 3.11 and 3.12's datetime library seems to accept it.
+Until the svn usbhybrid repository solves this issue, a test as provided in
+test/test_datetime.py is provisioned, in case.  
+Without VSCode, the tests can be runned by navigating into the `test/` folder,
+and running `pytest` in the command line. (This assumes that pip has already
+installed pytest)
+
 ## Synology NAS for Data collection
 Files to edit
 ```
