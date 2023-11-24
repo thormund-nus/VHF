@@ -18,6 +18,9 @@ def main():
         interpolation=configparser.ExtendedInterpolation())
     vhf_conf.read(vhf_config_path)
     number_runs = vhf_conf.getint('Extended Sampling', 'num_runs')
+    if number_runs <= 1:
+        print("\x1B[41mUnknown configuration in Extended Sampling, please use run_VHF.py\x1B[49m")
+        return
     print(f"{__file__} is being run with {number_runs = }.")
 
     confirmation_input = input("Are these parameter alright? [y/N]: ")
