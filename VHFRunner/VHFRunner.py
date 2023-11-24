@@ -281,6 +281,11 @@ class VHFRunner():
         # Filename generated
         if self.to_file:
             if ' ' in self.path["save_dir"]:
+                # This is the only part of the file name that is user-defined.
+                # VHF board tested to have not been able to recieve -o flag
+                # with spaces in the name, as of SVN version 22. This can be
+                # bypassed by using "-o -" to pipe into STDOUT, which can then
+                # be passed as STDIN for writing from.
                 raise ValueError(
                     "Save directory has spaces included in it. Please use a different directory.")
             fn = datetime.datetime.now().isoformat() + \
