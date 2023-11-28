@@ -295,14 +295,24 @@ def main():
         ph_ax.plot(np.arange(len(phase1))/2e4, phase1/1e3,
             color='#0000ff', linewidth=0.2)
 
+        # add secondary axis: displacement
+        dis_ax = ph_ax.secondary_yaxis('right', functions=(
+            lambda x: x * 1.55/1.5,
+            lambda x: x / (1.55/1.5)
+        ))
+
         spec_ax.tick_params(axis='both', which='major', labelsize=6)
         colb_ax.tick_params(axis='both', which='major', labelsize=6)
         ph_ax.tick_params(axis='both', which='major', labelsize=6)
+        dis_ax.tick_params(axis='both', which='major', labelsize=6)
         
         spec_ax.set_xlabel('Time (s)', fontsize=6)
         spec_ax.set_ylabel('Frequency (Hz)', fontsize=6)
         colb_ax.set_ylabel('Intensity (a.u.)', fontsize=6)
-        ph_ax.set_ylabel('$\phi_d$ ($2\pi \cdot 10^3$ rad)', fontsize=6, usetex=True)
+        ph_ax.set_ylabel('$\phi_d$ ($2\pi \cdot 10^3$ rad)',
+                         fontsize=6, usetex=True)
+        dis_ax.set_ylabel('$\Delta L$ (mm)',
+                          fontsize=6, usetex=True)
         spec_ax.set_xlim(ax_extent[0], 350.0)
         spec_ax.set_ylim(ax_extent[2], 30)
 
@@ -332,6 +342,7 @@ def main():
     gnuplot = False
     if gnuplot:
         Sxx = TODO
+
 
 if __name__ == '__main__':
     main()
