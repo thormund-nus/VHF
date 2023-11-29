@@ -44,6 +44,12 @@ class VHFparser:
         self.__create_logger()
         self.logger.info('VHF parser has been run for file: %s', filename)
 
+        # attributes:
+        # filesize: bytes -
+        #     length of data + header
+        # _num_head_bytes: mutable, bytes -
+        #     aims to show number of bytes of header read
+
         # init guard: parse time params
         if start_time is not None:
             assert isinstance(start_time, datetime)
@@ -51,15 +57,17 @@ class VHFparser:
             assert isinstance(end_time, datetime)
 
         # Create class specific modifiers
-        self._num_read_bytes = 0
+        self._num_head_bytes = 0
         self._fix_m_called = False
 
         # init: Begin Parsing logic, populating header
         if isinstance(filename, BufferedRandom):
+            self.logger.debug("Obtained Buffered Random object")
             self.filesize = filename.tell()
             filename.seek(0)
             self._init_buffer(filename)
         elif isinstance(filename, str) or isinstance(filename, os.PathLike):
+            self.logger.debug("Obtained File-like object")
             self.filesize = os.path.getsize(filename)  # number of bytes
             self._init_file(filename)
         else:
@@ -70,7 +78,7 @@ class VHFparser:
         # init: Populate body "data" to within (start_time, end_time)
         # Available data in file in contrast to header['s']'s expected
         # file-length in the event that sampling
-        max_data_size = int((self.filesize - self._num_read_bytes) / 8)
+        max_data_size = int((self.filesize - self._num_head_bytes) / 8)
         if end_time is not None:
             # cast both to offset-aware if either times are
             if (self._datetime_aware(end_time)
@@ -89,7 +97,7 @@ class VHFparser:
             filename,
             dtype=np.dtype(np.uint64).newbyteorder("<"),
             mode="r",
-            offset=self._num_read_bytes,
+            offset=self._num_head_bytes,
             shape=(max_data_size,),
         )
 
@@ -125,6 +133,7 @@ class VHFparser:
         if actual != expected:
             self.logger.error(
                 "Buffer not found to conform to header expectations.")
+            self.logger.debug("buffer.tell() = %s", buffer.tell())
             self.logger.debug(
                 "Buffer read(1024): %s", header +
                 buffer.read(min(1024, self.filesize-8))
@@ -132,11 +141,20 @@ class VHFparser:
             raise ValueError(
                 "Buffer does not conform to header expectations.")
 
-        # 1 to account for first word used to determine size of header
+        # in accordance with convert_bin_to_text.c
         header_count_b = (int.from_bytes(header, "little") & 0xFFFF) - 1
-        header_count = header_count_b * 8
-        self._num_read_bytes += header_count
-        self.headerraw: bytes = buffer.read((header_count)).rstrip(b"\x00")
+        # in teststream.c (SVN v17), 1 + i lines(8 bytes) were written (see line
+        # 353), where i was (magic mask + 1). we note that due to improper null
+        # termination of headerbuffer (in line 352) meant that teststream.c was
+        # reading beyond buffer, which was not guranteed to be all 0s.
+        # Nonetheless, consume it as header in accordance with masked magic
+        # number and dump away. As such, stripping supposed 0s are ok.
+        # -----
+        # + 1 to read one more byte than spec (convert_bin_to_text.c)
+        header_count = (header_count_b+1) * 8
+        self._num_head_bytes += header_count  # this is the claimed headersize
+        self.headerraw: bytes = buffer.read(header_count)
+        self.headerraw = self.headerraw.rstrip(b"\x00")
         self.parse_header(self.headerraw)
 
     def _drop_left(self, val: int):
@@ -235,18 +253,40 @@ class VHFparser:
     def parse_header(self, header_raw: bytes):
         """Convert binary file header into a header property."""
         if header_raw is None:
+            self.logger.error("parse_header invoked with empty argument: header_raw")
             raise ValueError("header_raw was not given.")
 
         # init
         self.header: dict = dict()
         header_raw: list[bytes] = header_raw.split(b"# ")[1:]
         self.logger.debug("parsed_header recieved header_raw = %s", header_raw)
-        for x in header_raw[0].split(b" -")[1:]:  # command line record
-            x = x.decode().strip(" ")
-            self.header[x[0]] = x[1:].strip()
+        # populate self.header from command line
+        func_cmd_line = lambda x: "command line: " in x.decode()
+        for header_line in filter(func_cmd_line, header_raw):
+            for x in header_line.split(b" -")[1:]:
+                x = x.decode().strip(" ")
+                self.header[x[0]] = x[1:].strip()
 
-        self.header["Time start"] = datetime.fromisoformat(
-            header_raw[1].split(b': ')[1].split(b'\n')[0].decode().strip())
+        # populate self.header["Time start"]
+        func_record = lambda x: "recording start: " in x.decode()
+        if any(map(func_record, header_raw)):
+            filtered_header = filter(func_record, header_raw)
+            entry = next(filtered_header)
+            val = entry.split(b': ')[1]
+            iso_str = val.split(b'\n')[0].decode().strip()
+            self.header["Time start"] = datetime.fromisoformat(iso_str)
+            try:
+                next(filtered_header)
+                self.logger.warn("More than one `recording start` found in header.")
+            except StopIteration:
+                pass
+            except Exception as e:
+                self.logger.warn("Error obtained trying to obtain next on filter obtaining `recording start`")
+                self.logger.warn("Exception: %s", e)
+        else:
+            self.logger.warn("Command date and time could not be found within header. Attempting to obtain date and time from filename.")
+            # TODO: obtain from filename.
+
         for k, v in self.header.items():
             try:
                 self.header[k] = int(v)
