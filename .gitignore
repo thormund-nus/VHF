@@ -9,7 +9,6 @@ FYPLibrary
 set_device_mode
 
 # Derived scripts
-run_and_plot_VHF.py
 run_vhf_wknd.py
 
 # Byte-compiled / optimized / DLL files
