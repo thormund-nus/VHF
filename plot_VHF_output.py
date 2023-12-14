@@ -1,93 +1,14 @@
 # Written with svn r14 in mind, where files are now explicitly set to save in
 # binary output
 
-import sys
+from datetime import datetime
 from matplotlib import pyplot as plt
 import numpy as np
-from os import path, listdir
-from typing import List, Tuple, Callable
+from typing import Tuple, Callable
 from pathlib import Path
 from parseVHF import VHFparser  # relative import
 import scipy as sp
-
-
-def get_files(start_path: Path) -> List[Path] | Path:
-    start_path = Path(start_path)
-    print(f"\nCurrent directory: \x1B[34m{start_path}\x1B[39m")
-    start_path_contents = list(start_path.iterdir())
-
-    # Notify if empty
-    if len(start_path_contents) < 1:
-        print("This folder is empty.")
-
-    # Print with or without [Dir]
-    if any(f.is_dir() for f in start_path_contents):
-        dir_marker = "[Dir] "
-        marker_len = len(dir_marker)
-        for i, f in enumerate(start_path_contents):
-            # Print only the filename
-            print(
-                f"{i:>3}: \x1B[31m{dir_marker if f.is_dir() else ' '*marker_len}\x1B[39m{f.name}"
-            )
-    else:
-        for i, f in enumerate(start_path_contents):
-            print(f"{i:>3}: {f.name}")
-
-    while True:
-        # Get user input
-        try:
-            my_input = input("Select file to parse, -1 for all files: ")
-        except KeyboardInterrupt:
-            print("\nKeyboard Interrupt recieved. Exiting.")
-            sys.exit(0)
-
-        # Convert user input into Path for return
-        try:
-            my_input = int(my_input)
-            if -1 <= my_input < len(start_path_contents):
-                break
-            if my_input >= len(start_path_contents):
-                print("Value given is too large!")
-            else:
-                print("Value given is too small!")
-        except ValueError:
-            print("Invalid value given!")
-
-    if my_input == -1:
-        result = list(filter(lambda x: x.is_file(), start_path_contents))
-    else:
-        file_chosen = start_path_contents[my_input]
-        if file_chosen.is_file():
-            result = file_chosen
-        elif file_chosen.is_dir():
-            result = get_files(start_path.joinpath(file_chosen))
-        else:
-            print("Selection is neither file nor directory.")
-            sys.exit(0)
-
-    return result
-
-
-def user_input_bool(prompt: str) -> bool:
-    while True:
-        # Get user input
-        try:
-            my_input = input(f"{prompt} \x1B[31m(y/n)\x1B[39m: ")
-        except KeyboardInterrupt:
-            print("\nKeyboard Interrupt recieved. Exiting.")
-            sys.exit(0)
-
-        # Convert user input into Path for return
-        try:
-            my_input = my_input[0].lower()
-            if my_input == 'y':
-                return True
-            elif my_input == 'n':
-                return False
-            else:
-                print(f"Invalid value!")
-        except ValueError:
-            print("Invalid value given!")
+from VHF.user_io import get_files, user_input_bool
 
 
 def get_phase(o: VHFparser) -> np.ndarray:
@@ -231,6 +152,9 @@ def main():
 
     if isinstance(files, list):
         file: Path = files[0]
+        print("This script has not implemented plotting and saving all files.")
+    elif isinstance(files, map):
+        file: Path = next(files)
         print("This script has not implemented plotting and saving all files.")
     else:
         file: Path = files
