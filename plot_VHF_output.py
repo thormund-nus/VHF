@@ -143,7 +143,7 @@ def plot_rad_spec(radius: bool, spectrum: bool) -> Callable:
 
 def main():
     print("Please select files intended for plotting.")
-    files = get_files(start_path=path.join(path.dirname(__file__)))
+    files = get_files(init_dir=str(Path(__file__).parent))
 
     print(f"{files = }")
     if files is None:

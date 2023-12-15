@@ -44,7 +44,12 @@ for collecting 'stream' data.
 
 
 ### Plotting Data
-
+Requirements.txt provides additional gui things that assists with plotting
+process. However, the installed python modules have some build dependencies.
+On OpenSUSE, consider
+  zypper install cairo-devel gobject-introspection-devel
+prior to
+  python -m pip install -r requirements.txt
 
 Additional details:  
 1. ISO datetime  
