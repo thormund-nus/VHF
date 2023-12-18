@@ -1,3 +1,9 @@
 tabulate
 PyQt6
 PyGObject
+pyserial
+python-usbtmc
+pyusb
+pyvisa
+pyvisa-py
+tqdm
