@@ -48,21 +48,30 @@ def get_files(init_dir: bytes | str, multiple: bool = True,
         # 2. Try KDialog/Zenity next
         # 3. Try QFileDialog last
 
-        try:
-            results = get_files_portal(
-                init_dir, multiple=multiple, title=title)
-            # convert to Path
-            return _cast_to_path(results)
-        except ModuleNotFoundError:
-            pass
-        except Exception as e:
-            logger.error("get_files_portal - Exception encountered: %s", e)
+        if not os.environ.get("SSH_CONNECTION"):
+            try:
+                results = get_files_portal(
+                    init_dir, multiple=multiple, title=title)
+                # convert to Path
+                return _cast_to_path(results)
+            except ModuleNotFoundError:
+                pass
+            except KeyboardInterrupt:
+                logger.info("Recieved Keyboard Interrupt.")
+                sys.exit(0)
+            except Exception as e:
+                logger.error("get_files_portal - Exception encountered: %s", e)
+        else:
+            logger.info("Skipping get_files_portal. Found to be in SSH.")
 
         try:
             results = get_files_util_fallback(
                 init_dir, multiple=multiple, title=title)
             # convert to Path
             return _cast_to_path(results)
+        except KeyboardInterrupt:
+            logger.info("Recieved Keyboard Interrupt.")
+            sys.exit(0)
         except Exception as e:
             logger.error(
                 "get_files_util_fallback - Exception encountered: %s", e)
@@ -73,6 +82,9 @@ def get_files(init_dir: bytes | str, multiple: bool = True,
             return _cast_to_path(results)
         except ModuleNotFoundError:
             pass
+        except KeyboardInterrupt:
+            logger.info("Recieved Keyboard Interrupt.")
+            sys.exit(0)
         except Exception as e:
             logger.error(
                 "get_files_util_fallback - Exception encountered: %s", e)
