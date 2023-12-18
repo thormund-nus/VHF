@@ -6,6 +6,7 @@ from plot_VHF_output import get_phase, plot_rad_spec
 from matplotlib import pyplot as plt
 import subprocess
 from subprocess import PIPE
+import sys
 from tempfile import NamedTemporaryFile
 from VHFRunner.VHFRunner import VHFRunner
 
@@ -30,7 +31,7 @@ def main():
 
     logging.basicConfig(
         filename=datetime.datetime.now().strftime(
-            "Log/runVHFlog_%Y_%m_%d_%H_%M_%s.log"
+            "Log/runandplotVHF_%Y%m%d_%H%M%s.log"
         ),
         filemode="w",
         format="[%(asctime)s] %(name)s -\t%(levelname)s -\t%(message)s",
@@ -38,6 +39,7 @@ def main():
     )
 
     with NamedTemporaryFile(dir='/dev/shm') as tmp_store:
+        emsg = 0
         start_time = datetime.datetime.now()
 
         try:
@@ -49,8 +51,9 @@ def main():
             logging.info("Retcode %s", retcode)
         except KeyboardInterrupt:
             logging.info("Subprocess ran with %s", str(sb_run))
-            logging.info("Keyboard Interrupt")
+            logging.info("Keyboard Interrupted")
             print("Keyboard Interrupt recieved!")
+            sys.exit(0)
         except subprocess.CalledProcessError as exc:
             logging.info("Subprocess ran with %s", str(sb_run))
             logging.critical("CalledProcess error with exception! Details:")
@@ -61,6 +64,7 @@ def main():
             logging.critical("")
             print(f"Process returned with error code {255-exc.returncode}")
             print(f"{exc.stderr = }")
+            emsg = 1
         except subprocess.TimeoutExpired as exc:
             logging.info("Subprocess ran with %s", str(sb_run))
             logging.critical("TimeoutExpired with exception:")
@@ -70,22 +74,27 @@ def main():
             logging.critical("%s", exc.stderr)
             logging.critical("")
             print(f"Process Timed out!")
+            emsg = 1
 
         end_time = datetime.datetime.now()
         print(f"Sampling was ran for {(end_time - start_time)}.")
         logging.info("Sampling ended at %s", end_time)
+        if emsg != 0:
+            sys.exit(-1)
 
         parsed = VHFparser(tmp_store.name)
-        phase = get_phase(parsed)
-        print(f"Phase mean: {phase[12000:].mean()}\nPhase Std Dev: {phase[12000:].std()}")
-        fig = plot_rad_spec(True, True)(parsed, phase)
-        view_const = 2.3
-        fig.legend()
-        fig.set_size_inches(view_const * 0.85 *
-                            (8.25 - 0.875 * 2), view_const * 2.5)
-        fig.tight_layout()
-        fig.canvas.manager.set_window_title(tmp_store.name)
-        plt.show(block=True)
+        tmp_store_name = tmp_store.name
+
+    phase = get_phase(parsed)
+    print(f"Phase mean: {phase[12000:].mean()}\nPhase Std Dev: {phase[12000:].std()}")
+    fig = plot_rad_spec(True, True)(parsed, phase)
+    view_const = 2.3
+    fig.legend()
+    fig.set_size_inches(view_const * 0.85 *
+                        (8.25 - 0.875 * 2), view_const * 2.5)
+    fig.tight_layout()
+    fig.canvas.manager.set_window_title(tmp_store_name)
+    plt.show(block=True)
 
     return
 

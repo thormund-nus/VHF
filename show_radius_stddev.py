@@ -12,7 +12,7 @@ from VHFRunner.VHFRunner import VHFRunner
 def main():
     logging.basicConfig(
         filename=datetime.datetime.now().strftime(
-            "Log/runVHFlog_%Y_%m_%d_%H_%M_%s.log"
+            "Log/showRstdDEV_%Y%m%d_%H%M%s.log"
         ),
         filemode="w",
         format="[%(asctime)s] %(name)s -\t%(levelname)s -\t%(message)s",
