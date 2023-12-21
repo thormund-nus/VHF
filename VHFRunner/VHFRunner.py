@@ -11,22 +11,25 @@ from os import PathLike
 from os.path import realpath
 from pathlib import Path
 from shlex import quote
+import sys
 from typing import Any
 from typing import IO
 from typing import Iterable
 from typing import Mapping
 from typing import Union
+from VHF.process import board_in_use
 
 __all__ = ["VHFRunner"]
 
 # TTY
 RED = '\x1B[31m'
 REDBOLD = '\x1B[31;1m'
+REDINV = '\x1b[41m'
 BLUE = '\x1B[34m'
 RESET = '\x1B[0m'
 
 # Typing
-_PATH = Union[str, bytes, PathLike, Path]
+_PATH = Union[str, PathLike, Path]
 _FILE = Union[None, int, IO[Any]]
 _TXT = Union[bytes, str]
 
@@ -108,7 +111,8 @@ class VHFRunner():
     """Configparses config file into appropriate strings for subprocess."""
 
     def __init__(self, conf_file: _PATH, force_to_buffer: bool = False,
-                 overwrite_properties: Mapping = dict()):
+                 overwrite_properties: Mapping = dict(),
+                 strict_use: bool = True):
         """VHFRunner oversees the necessary conditions to pass into
         subprocess for sampling data with VHF board from config file.
 
@@ -120,8 +124,12 @@ class VHFRunner():
             library.
         force_to_buffer: bool
             If true, disregards conf_file's save_to_file option.
+        strict_use: bool
+            Defaults to True. If true, exits running process, to avoid adding
+            more commands to existingly running VHF board.
         """
         self.__createLogger()
+        self.strict_mode: bool = strict_use
 
         # Resolve paths automagically with ExtendedInterpoliation
         conf = configparser.ConfigParser(
@@ -287,7 +295,15 @@ class VHFRunner():
                 # bypassed by using "-o -" to pipe into STDOUT, which can then
                 # be passed as STDIN for writing from.
                 raise ValueError(
-                    "Save directory has spaces included in it. Please use a different directory.")
+                    "Save directory has spaces included in it. "
+                    "Please use a different directory.")
+
+            if not Path(self.path["save_dir"]).exists():
+                # Folder creation is not the responsibility of this class.
+                raise ValueError(
+                    f"Desired save_dir of `{self.path["save_dir"]}` could not "
+                    " be found.")
+
             fn = datetime.datetime.now().isoformat() + \
                 "".join(result[3:]).replace('-', '_')
             fn += '_' + '_'.join(flatten(self.phasemeter_kwargs.items()))
@@ -302,6 +318,17 @@ class VHFRunner():
         If writing to stdout instead, user is to provide their own pipe to pass
         into subprocess.run, through `stdout` arg.
         """
+        if self.board_in_use():
+            print(
+                f"{REDINV}VHF Board {self.path['vhf_dev']} found to be in "
+                f"use!{RESET}"
+            )
+            self.logger.critical(
+                "VHF Runner for VHF board to be currently in use.")
+            if self.strict_mode:
+                print("Exiting!")
+                self.logger.critical("Strict mode enabled! Exiting...")
+                sys.exit(1)
         result = {
             'args': self.subprocess_cmd(),
             'check': True,
@@ -318,3 +345,7 @@ class VHFRunner():
             result['stdout'] = stdout
 
         return result
+
+    def board_in_use(self) -> bool:
+        """Check if the provided board is being used at the moment."""
+        return board_in_use(Path(self.path['vhf_dev']))

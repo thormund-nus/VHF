@@ -3,6 +3,7 @@
 import logging
 import os
 import platform
+from ..process import exec_exists
 import subprocess
 import sys
 from typing import List
@@ -57,19 +58,6 @@ def get_files_portal(init_dir: bytes | str, multiple: bool = True,
     dialog.destroy()
 
     return filename
-
-
-def exec_exists(exec_name: str) -> bool:
-    """Determine if exec_name exists on the computer with which command."""
-    try:
-        if subprocess.check_call(['which', exec_name]) == 0:
-            return True
-        return False
-    except subprocess.CalledProcessError:
-        return False
-    except Exception as e:
-        logger.error("exec_exists obtained exception: %s", e)
-        raise e
 
 
 def get_files_util_fallback(init_dir: bytes | str, multiple: bool = True,
