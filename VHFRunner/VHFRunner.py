@@ -315,12 +315,8 @@ class VHFRunner():
             result.extend(['-o', fn])
         return result
 
-    def subprocess_run(self, stdout: _FILE = None) -> dict:
-        """All arguments for subprocess.run(...).
-
-        If writing to stdout instead, user is to provide their own pipe to pass
-        into subprocess.run, through `stdout` arg.
-        """
+    def subprocess_Popen(self) -> dict:
+        """All arguments for subprocess.Popen(...)."""
         if self.board_in_use():
             print(
                 f"{REDINV}VHF Board {self.path['vhf_dev']} found to be in "
@@ -338,7 +334,16 @@ class VHFRunner():
             'cwd': self.path['base_dir'],
             'timeout': 7 + self.sample_time()
         }
-        self.logger.debug("subprocess_run called. Returning %s", result)
+        self.logger.debug("subprocess_Popen called. Returning %s", result)
+        return result
+
+    def subprocess_run(self, stdout: _FILE = None) -> dict:
+        """All arguments for subprocess.run(...).
+
+        If writing to stdout instead, user is to provide their own pipe to pass
+        into subprocess.run, through `stdout` arg.
+        """
+        result = self.subprocess_Popen()
 
         if self.to_file:
             result['capture_output'] = True
@@ -346,7 +351,7 @@ class VHFRunner():
             if stdout is None:
                 raise ValueError("Stdout expected argument!")
             result['stdout'] = stdout
-
+        self.logger.debug("subprocess_run called. Returning %s", result)
         return result
 
     def board_in_use(self) -> bool:
