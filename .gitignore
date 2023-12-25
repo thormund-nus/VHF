@@ -6,7 +6,10 @@ FYPLibrary
 .vscode
 
 # Compiled outputs
-set_device_mode
+VHF/board_init/set_device_mode
+
+# Softlinks to boards
+vhf_board.softlink
 
 # Derived scripts
 run_vhf_wknd.py

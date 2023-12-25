@@ -1,10 +1,11 @@
-"""This script aims to """
+"""This script aims to prepare the VHF board for data sampling."""
 import os
 from serial import Serial
 from time import sleep
 import subprocess
 
 DEVICE_BASE_PATH = '/sys/bus/usb/devices'
+SET_DEVICE_MODE = 'VHF/board_init/set_device_mode'
 
 def find_device_by_sys():
     devices = os.listdir(DEVICE_BASE_PATH)
@@ -65,7 +66,7 @@ def main():
     
     if mode == '2':
         print(f"VHF board found to be in Hybrid Mode. Setting to ACM mode...")
-        subprocess.run(['./set_device_mode', 'set', bConfigPath, '1'])
+        subprocess.run([SET_DEVICE_MODE, 'set', bConfigPath, '1'])
         sleep(2)
         with open(bConfigPath, 'r') as f:
             mode = f.read().strip()
@@ -84,12 +85,12 @@ def main():
     print(f"{vhf.name = }")
     # vhf.open()
     sleep(2)
-    vhf.write(b"CONFIG 16\n") # raises
+    vhf.write(b"CONFIG 16\n")  # raises
     print('Raised Clear')
     sleep(2)
-    vhf.write(b"CONFIG 0\n") # lowers
-    vhf.write(b"SKIP\n") # skips packets stuck in FIFOs
-    vhf.write(b"CLOCKINIT\nADCINIT\n") # inits as need be
+    vhf.write(b"CONFIG 0\n")  # lowers
+    vhf.write(b"SKIP\n")  # skips packets stuck in FIFOs
+    vhf.write(b"CLOCKINIT\nADCINIT\n")  # inits as need be
     print('Lowered Clear\nFIFO should be flushed!')
 
     sleep(2)
@@ -98,7 +99,7 @@ def main():
 
     # set back to ACM
     print(f"Setting into Hybrid mode")
-    subprocess.run(['./set_device_mode', 'set', bConfigPath, '2'])
+    subprocess.run([SET_DEVICE_MODE, 'set', bConfigPath, '2'])
     sleep(1)
     with open(bConfigPath, 'r') as f:
         mode = f.read().strip()

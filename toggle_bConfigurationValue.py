@@ -1,7 +1,9 @@
 import subprocess
 import os
+import sys
 
 DEVICE_BASE_PATH = '/sys/bus/usb/devices'
+SET_DEVICE_MODE = 'VHF/board_init/set_device_mode'
 
 def find_device():
     devices = os.listdir(DEVICE_BASE_PATH)
@@ -24,13 +26,13 @@ with open(bConfigPath, 'r') as f:
 
 if '1' in mode:
     print('Setting VHF board bConfigurationValue to 2')
-    subprocess.run(['./set_device_mode', 'set', bConfigPath, '2'])
+    subprocess.run([SET_DEVICE_MODE, 'set', bConfigPath, '2'])
 elif '2' in mode:
     print('Setting VHF board bConfigurationValue to 1')
-    subprocess.run(['./set_device_mode', 'set', bConfigPath, '1'])
+    subprocess.run([SET_DEVICE_MODE, 'set', bConfigPath, '1'])
 else:
     print('wtf??')
-    os.exit(0)
+    sys.exit(1)
 
 newmode = ''
 with open(bConfigPath, 'r') as f:
