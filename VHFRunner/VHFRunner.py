@@ -190,9 +190,12 @@ class VHFRunner():
         previously instantised via the config file.
         """
         # Set of known keys
-        rel_k = [list(self._board_mappable), self._board_unmappable,
-                 list(self.board_kwargs), list(self.phasemeter_kwargs),
-                 list(self.path)]
+        other_sections = ["board_kwargs", "phasemeter_kwargs", "path"]
+        rel_k = [list(self._board_mappable), self._board_unmappable]
+        rel_k.extend([list(getattr(self, x)) for x in other_sections])
+        rel_section = dict(
+            [(t, x) for x in other_sections for t in list(getattr(self, x))]
+        )
 
         for key, v in p.items():
             if key in flatten(rel_k):
@@ -202,7 +205,7 @@ class VHFRunner():
                         if section in rel_k[:2]:
                             setattr(self, key, v)
                         else:
-                            getattr(self, section)[key] = v
+                            getattr(self, rel_section[key])[key] = v
                         break
 
             else:
