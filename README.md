@@ -10,27 +10,35 @@ Please be very aware of the use of symlinks in this folder.
 
 ## Usage
 
+Some of the following information below is outdated, as it has been made
+slightly redundant with the makefile, and that `set_device_mode` has been moved
+to `VHF/init_board/`, but the information still remains relevant for triage.
+
+---
+### Setup
+
 `set_device_mode.cpp` is compiled by the GCC to become the executable
 `set_device_mode`. For it to function properly, it is necessary that this
 executable has the necessary permissions. Ideally, `ls -la` would show
-  
+```
   -rwsr-xr-x 1 root   users <size> <date> <time> set_device_mode
+```
 
 This can be done by `chown root` and `chmod u+x` on the file.
 
 Currently, several files utilise symbolic links to the board and streaming
-executable, namely,
+exec, namely, `/dev/usbhybrid0` and `~/programs/usbhybrid/apps/teststream`.
 
-  /dev/usbhybrid0
-  ~/programs/usbhybrid/apps/teststream
-
-We note that the relevant locations to these may change in the future, and is 
+We note that the relevant locations to these may change in the future, and is
 therefore the use of a symbolic link helps keep things self-contained.
 
 The symbolic links currently are
-
-  vhf_board.softlink -> /dev/usbhybrid0
+```
+  vhf_board.softlink -> /dev/usbhybrid0  
   teststream.exec -> ~/programs/usbhybrid/apps/teststream
+```
+
+clear_FIFO.py will prompt as to the symblinks locations.
 
 ### Red light is active
 
@@ -42,40 +50,41 @@ for collecting 'stream' data.
 
 ### Collecting Data
 
+`run_VHF.py` and `run_and_plot.py` are examples you can refer to. Do note that
+they currently pull parameter information from `VHF_board_params.ini` to guide
+the filename and locations.
 
 ### Plotting Data
+
 Requirements.txt provides additional gui things that assists with plotting
 process. However, the installed python modules have some build dependencies.
 On OpenSUSE, consider
+```
   zypper install cairo-devel gobject-introspection-devel
+```
 prior to
+```
   python -m pip install -r requirements.txt
+```
 
 Additional details:  
 1. ISO datetime  
 In the process of plotting data, git-svn-id: svn://usbhybrid@12 introduced
 timing information of the command being recorded straight into the data header.
-With string format specifier `%F %T %z`, it is not an ISO-8601 compliant string,
-but Python 3.11 and 3.12's datetime library seems to accept it.
-Until the svn usbhybrid repository solves this issue, a test as provided in
+With string format specifier `%F %T %z`, it is not an ISO-8601 compliant
+string, but Python 3.11 and 3.12's datetime library seems to accept it. Until
+the svn usbhybrid repository solves this issue, a test as provided in
 test/test_datetime.py is provisioned, in case.  
 Without VSCode, the tests can be runned by navigating into the `test/` folder,
 and running `pytest` in the command line. (This assumes that pip has already
-installed pytest)
+installed pytest.)  
+**This should be fixed in USBHybrid repository.**
 
 ## Synology NAS for Data collection
-Files to edit
-```
-/etc/default/nfs-common
------
-NEED_IDMAPD = yes
-```
-```
-/etc/sysconfig/nfs
------
-??
-```
-To check if it has been mounted, use `mount | grep nfs`.
+
+Majority of mounting details are documented on Confluence.
+
+To check if it has been mounted, use `mount | grep nfs`. An example `/etc/fstab`:  
 ```
 /etc/fstab
 -----

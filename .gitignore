@@ -8,7 +8,8 @@ FYPLibrary
 # Compiled outputs
 VHF/board_init/set_device_mode
 
-# Softlinks to boards
+# Softlinks to boards, and other makefile effects
+teststream.exec
 vhf_board.softlink
 
 # Derived scripts
