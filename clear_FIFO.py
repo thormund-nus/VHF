@@ -9,10 +9,12 @@ from serial import Serial
 from shlex import quote
 from stat import S_IRGRP, S_IWGRP
 import subprocess
+from tabulate import tabulate
 from tempfile import TemporaryFile
 from time import sleep
 from typing import List, Union
 from VHF.process import board_in_use
+from VHF.user_io import user_input_bool_force
 from VHFRunner.VHFRunner import VHFRunner
 
 _PATH = Union[str, PathLike, Path]
@@ -25,6 +27,7 @@ EXPECTED_PRODUCT = "VHF Processor"
 
 REDINV = '\x1b[41m'
 RESET = '\x1B[0m'
+
 
 def find_device_by_sys() -> List[str]:
     """List all usb-devices whose product description are VHF.
@@ -42,9 +45,9 @@ def find_device_by_sys() -> List[str]:
         with open(prod_path, 'r') as f:
             content = f.read()
             if 'VHF' in content:
-                print(f"{device=}")
                 result.append(device)
     return result
+
 
 class EnumWithAttrs(Enum):
     """Factory class."""
@@ -111,6 +114,8 @@ class Board:
         return string
 
     def get_product(self) -> str:
+        """Read from /sys/bus/usb/devices/*/product, possibly to check if
+        VHF."""
         return open(
             Path(DEVICE_BASE_PATH)
             .joinpath(self.usb_device_id)
@@ -118,7 +123,7 @@ class Board:
         ).read().strip()
 
     @cached_property
-    def cwd(self) -> Path:
+    def _cwd(self) -> Path:
         """Sets CWD subprocess.run(...) for setting device made."""
         return Path(__file__).parent.resolve()
 
@@ -178,10 +183,11 @@ class Board:
         if self.usb_mode() != USBMode.ACM:
             try:
                 subprocess.run(
-                    [SET_DEVICE_MODE, 'set', quote(str(self.bConfigPath)), USBMode.ACM.val],
+                    [SET_DEVICE_MODE, 'set', quote(
+                        str(self.bConfigPath)), USBMode.ACM.val],
                     check=True,
                     stderr=subprocess.PIPE,
-                    cwd=self.cwd,
+                    cwd=self._cwd,
                     timeout=3
                 )
             except subprocess.CalledProcessError as exc:
@@ -199,10 +205,11 @@ class Board:
         if self.usb_mode() != USBMode.Hybrid:
             try:
                 subprocess.run(
-                    [SET_DEVICE_MODE, 'set', quote(str(self.bConfigPath)), USBMode.Hybrid.val],
+                    [SET_DEVICE_MODE, 'set', quote(
+                        str(self.bConfigPath)), USBMode.Hybrid.val],
                     check=True,
                     stderr=subprocess.PIPE,
-                    cwd=self.cwd,
+                    cwd=self._cwd,
                     timeout=3
                 )
             except subprocess.CalledProcessError as exc:
@@ -283,6 +290,10 @@ class Board:
 def clear_fifo_per_board(dev_id: str, aggressive: bool = False,
                          verbose: bool = True):
     board = Board(dev_id, aggressive=aggressive, verbose=verbose)
+    if board.in_use() and \
+            not user_input_bool_force(f"Board {board.board_id} found to be in use! Continue?", False):
+        print("Not resetting!")
+        return
     board.acm_clear()
     board.set_hybrid()
     if aggressive:
@@ -291,6 +302,7 @@ def clear_fifo_per_board(dev_id: str, aggressive: bool = False,
         logger.warn(
             "Possibly VHF drivers installed under sudo. Please reinstall.")
     print(f"\n{board}")
+
 
 def show_all_dev_symlinks():
     """Prints to user what devices are being pointed to, and if they exist."""
@@ -303,27 +315,60 @@ def show_all_dev_symlinks():
     ps = filter(relative_to_dev, ps)
     for p in ps:
         print(f"./{p.relative_to(Path(__file__).parent)}: "
-            f"{REDINV if not p.resolve().exists() else RESET}"
-            f"{str(p.resolve())}{RESET}")
+              f"{REDINV if not p.resolve().exists() else RESET}"
+              f"{str(p.resolve())}{RESET}")
     return ps
+
 
 def main():
     """Uplift VHF board into USB Hybrid mode."""
     # argparse asking for aggressive, i.e.: to read out from buffer. verbose
     # flag is passed too
+    verbosity = False
+    aggressiveness = False
 
     # 1. Get all /sys/... addresses for each
     # 2. If more than 1, Inform of board ID; notify and ask to select which
     #    board to elevate.
     devices = find_device_by_sys()
-    if len(devices) > 1:
-        print("TODO: clear the more than 1 board found. Clearing only the first")
-        print("Found: ")
-        for x in devices:
-            print(f"{Board(x)}\n")
-    devices = devices[0]
 
-    clear_fifo_per_board(devices, True, True)
+    # inform user of all connected boards
+    j, table_head = 0, ["idx", "Serial NO", "In Use", "USB Mode", "Interface"]
+    if verbosity:
+        table_head.append("Udev Address")
+
+    def table_method(sys_bus: str):
+        """List of board attributes for displaying to user."""
+        d = Board(sys_bus)
+        nonlocal j
+        ans = [j, d.board_id, d.in_use(), d.usb_mode(), d.interface_path()]
+        j += 1
+        if verbosity:
+            ans.append(d.hotplug_path())
+        return ans
+
+    if len(devices) > 1:
+        devices.sort(key=lambda d: Board(d).board_id)
+
+    print(tabulate(map(table_method, devices), headers=table_head))
+    print()
+
+    if len(devices) > 1:
+        idxs = input(
+            "Please select which boards you wish to reset (col: idx). Please delimit with commas:")
+        idxs = list(map(int, idxs.split(",")))
+        print(f"Selection: {idxs}")
+        devices_to_reset = [devices[i] for i in idxs]
+    else:
+        devices_to_reset = devices
+    # print(f"[Debug] {devices_to_reset=}")
+
+    for d in devices_to_reset:
+        clear_fifo_per_board(d, aggressiveness, verbosity)
+        print()
+
+    print("Summary:")
+    show_all_dev_symlinks()
 
 
 if __name__ == '__main__':
