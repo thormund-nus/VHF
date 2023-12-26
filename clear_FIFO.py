@@ -1,4 +1,5 @@
 """This script aims to prepare the VHF board for data sampling."""
+from argparse import ArgumentParser, ArgumentError
 from enum import Enum
 from functools import cached_property
 from logging import Logger
@@ -324,8 +325,22 @@ def main():
     """Uplift VHF board into USB Hybrid mode."""
     # argparse asking for aggressive, i.e.: to read out from buffer. verbose
     # flag is passed too
-    verbosity = False
-    aggressiveness = False
+    args = ArgumentParser(
+        description="Clear FIFO queue to VHF board, and set into Hybrid mode.",
+    )
+    args.add_argument(
+        "-a", "--aggressive",
+        help="Reads out data from VHF board while in Hybrid mode.",
+        action="store_true",
+    )
+    args.add_argument(
+        "-v", "--verbose",
+        help="Prints out more information.",
+        action="store_true",
+    )
+    selection = args.parse_args()
+    aggressiveness = selection.aggressive
+    verbosity = selection.verbose
 
     # 1. Get all /sys/... addresses for each
     # 2. If more than 1, Inform of board ID; notify and ask to select which
@@ -353,6 +368,7 @@ def main():
     print(tabulate(map(table_method, devices), headers=table_head))
     print()
 
+    # request for selection of boards to perform on.
     if len(devices) > 1:
         idxs = input(
             "Please select which boards you wish to reset (col: idx). Please delimit with commas:")
