@@ -23,6 +23,9 @@ DEVICE_BASE_PATH = '/sys/bus/usb/devices'
 SET_DEVICE_MODE = 'VHF/board_init/set_device_mode'
 EXPECTED_PRODUCT = "VHF Processor"
 
+REDINV = '\x1b[41m'
+RESET = '\x1B[0m'
+
 def find_device_by_sys() -> List[str]:
     """List all usb-devices whose product description are VHF.
 
@@ -289,6 +292,20 @@ def clear_fifo_per_board(dev_id: str, aggressive: bool = False,
             "Possibly VHF drivers installed under sudo. Please reinstall.")
     print(f"\n{board}")
 
+def show_all_dev_symlinks():
+    """Prints to user what devices are being pointed to, and if they exist."""
+    def relative_to_dev(x: Path):
+        try:
+            return x.resolve().relative_to("/dev", walk_up=False)
+        except ValueError:
+            return False
+    ps = filter(lambda p: p.is_symlink(), Path(__file__).parent.rglob("[!.]*"))
+    ps = filter(relative_to_dev, ps)
+    for p in ps:
+        print(f"./{p.relative_to(Path(__file__).parent)}: "
+            f"{REDINV if not p.resolve().exists() else RESET}"
+            f"{str(p.resolve())}{RESET}")
+    return ps
 
 def main():
     """Uplift VHF board into USB Hybrid mode."""
