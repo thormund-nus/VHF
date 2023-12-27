@@ -112,7 +112,7 @@ def main():
         """Ensures at least s pipes available."""
         requeue_all_free()
         while len(available_pipes) < s:
-            logging.debug(f"[Driver] {len(available_pipes) = } < {s = }")
+            logger.debug(f"[Driver] {len(available_pipes) = } < {s = }")
             requeue_all_free()
             sleep(1)
 
@@ -138,7 +138,7 @@ def main():
     _ = [j.join() for j in vhfs]
     _ = [(p.close(), q.close()) for p, q in vhf_pipes]
 
-    logging.info("Main is exiting")
+    logger.info("Main is exiting")
     return
 
 

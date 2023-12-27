@@ -6,7 +6,7 @@ from parseVHF import VHFparser  # relative import
 from pathlib import Path
 from plot_VHF_output import plot_rad_spec, get_phase
 from tempfile import TemporaryFile
-from VHFRunner.VHFRunner import VHFRunner
+from VHF.runner import VHFRunner
 
 
 def main():

@@ -16,7 +16,7 @@ from time import sleep
 from typing import List, Union
 from VHF.process import board_in_use
 from VHF.user_io import user_input_bool_force
-from VHFRunner.VHFRunner import VHFRunner
+from VHF.runner import VHFRunner
 
 _PATH = Union[str, PathLike, Path]
 

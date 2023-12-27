@@ -25,7 +25,7 @@ import tempfile
 import threading
 from time import sleep
 from typing import Union
-from VHFRunner.VHFRunner import VHFRunner
+from VHF.runner import VHFRunner
 
 logger = logging.getLogger("VHF")
 

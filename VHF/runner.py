@@ -17,7 +17,7 @@ from typing import IO
 from typing import Iterable
 from typing import Mapping
 from typing import Union
-from VHF.process import board_in_use
+from .process import board_in_use
 
 __all__ = ["VHFRunner"]
 

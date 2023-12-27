@@ -23,7 +23,7 @@ import tempfile
 from time import sleep
 import threading
 from typing import Union
-from VHFRunner.VHFRunner import VHFRunner
+from VHF.runner import VHFRunner
 
 _PATH = Union[str, bytes, PathLike, Path]
 

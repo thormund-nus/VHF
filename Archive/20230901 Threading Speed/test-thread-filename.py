@@ -37,7 +37,7 @@ from pathlib import Path
 module_path = str(Path(__file__).parents[2])
 if module_path not in sys.path:
     sys.path.append(module_path)
-from VHFRunner.VHFRunner import VHFRunner
+from VHF.runner import VHFRunner
 from parseVHF import VHFparser
 
 

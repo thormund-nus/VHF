@@ -8,7 +8,7 @@ import subprocess
 from subprocess import PIPE
 import sys
 from tempfile import NamedTemporaryFile
-from VHFRunner.VHFRunner import VHFRunner
+from VHF.runner import VHFRunner
 
 
 def main():

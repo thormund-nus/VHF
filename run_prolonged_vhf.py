@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 import subprocess
 from tqdm import tqdm
-from VHFRunner.VHFRunner import VHFRunner
+from VHF.runner import VHFRunner
 
 
 def main():
