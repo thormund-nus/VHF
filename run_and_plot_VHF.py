@@ -54,33 +54,21 @@ def main():
             logging.info("Keyboard Interrupted")
             print("Keyboard Interrupt recieved!")
             sys.exit(0)
-        except subprocess.CalledProcessError as exc:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             logging.info("Subprocess ran with %s", str(sb_run))
-            logging.critical("CalledProcess error with exception! Details:")
-            logging.critical("%s", exc)
-            logging.critical("")
-            logging.critical("exc.stderr = ")
-            logging.critical("%s", exc.stderr)
-            logging.critical("")
-            print(f"Process returned with error code {255-exc.returncode}")
-            print(f"{exc.stderr = }")
-            emsg = 1
-        except subprocess.TimeoutExpired as exc:
-            logging.info("Subprocess ran with %s", str(sb_run))
-            logging.critical("TimeoutExpired with exception:")
-            logging.critical("%s", exc)
-            logging.critical("")
-            logging.critical("exc.stderr = ")
-            logging.critical("%s", exc.stderr)
-            logging.critical("")
-            print(f"Process Timed out!")
+            logging.critical("exc: %s", exc)
+            logging.critical("exc.stderr = ", exc.stderr)
+            logging.critical("", exc_info=True)
+            if isinstance(exc, subprocess.CalledProcessError):
+                print(f"Process returned with error code {exc.returncode}")
+            print(f"{exc.stderr=}")
             emsg = 1
 
         end_time = datetime.datetime.now()
         print(f"Sampling was ran for {(end_time - start_time)}.")
         logging.info("Sampling ended at %s", end_time)
         if emsg != 0:
-            sys.exit(-1)
+            sys.exit(-emsg)
 
         parsed = VHFparser(tmp_store.name)
         tmp_store_name = tmp_store.name

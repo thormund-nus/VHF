@@ -37,25 +37,17 @@ def main():
             fig = plot_rad_spec(True, True)(parsed, phase)
 
     except KeyboardInterrupt:
+        logging.info("Subprocess ran with %s", str(sb_run))
         logging.info("Keyboard Interrupt")
         print("Keyboard Interrupt recieved!")
-    except subprocess.CalledProcessError as exc:
-        logging.critical("CalledProcess error with exception! Details:")
-        logging.critical("%s", exc)
-        logging.critical("")
-        logging.critical("exc.stderr = ")
-        logging.critical("%s", exc.stderr)
-        logging.critical("")
-        print(f"Process returned with error code {255-exc.returncode}")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        logging.info("Subprocess ran with %s", str(sb_run))
+        logging.critical("exc: %s", exc)
+        logging.critical("exc.stderr = ", exc.stderr)
+        logging.critical("", exc_info=True)
+        if isinstance(exc, subprocess.CalledProcessError):
+            print(f"Process returned with error code {exc.returncode}")
         print(f"{exc.stderr = }")
-    except subprocess.TimeoutExpired as exc:
-        logging.critical("TimeoutExpired with exception:")
-        logging.critical("%s", exc)
-        logging.critical("")
-        logging.critical("exc.stderr = ")
-        logging.critical("%s", exc.stderr)
-        logging.critical("")
-        print(f"Process Timed out!")
 
 
 if __name__ == "__main__":
