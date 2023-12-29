@@ -262,8 +262,8 @@ class VHFRunner():
                   f"{int((st%86400)//3600)} hours "
                   f"{((st%86400)%3600)/60:.3f} mins{RESET}.")
 
-    def subprocess_cmd(self) -> list:
-        """First argument of subprocess.run(...)."""
+    def get_params(self) -> list[str]:
+        """Obtain the parameter list invoked for VHF board."""
         def s(x): return str(x)
         def qs(x): return quote(str(x))
 
@@ -289,6 +289,34 @@ class VHFRunner():
         for k, v in self.board_kwargs.items():
             result.extend(['-'+k, s(v)])
 
+        return result
+
+    def get_filename(self, params: list[str], timestamp: bool = True):
+        """Obtain the filename that would be generated, shell-escaped.
+
+        No special effort is done to ensure that the generated path's parent
+        exists or is safe under the current C implementation of teststream's -o
+        flag.
+
+        Input
+        -----
+        params: list
+            list of params that is being invoked for subprocess_run being
+            passed to the VHF board.
+        """
+        def qs(x): return quote(str(x))
+
+        fn = datetime.datetime.now().isoformat() if timestamp else "" + \
+            "".join(params[3:]).replace('-', '_')
+        fn += '_' + '_'.join(flatten(self.phasemeter_kwargs.items()))
+        fn += "." + self.encode.ext
+        fn = qs(Path(self.path['save_dir']).joinpath(fn).resolve())
+
+        return fn
+
+    def subprocess_cmd(self) -> list:
+        """First argument of subprocess.run(...)."""
+        result = self.get_params()
         # Filename generated
         if self.to_file:
             if ' ' in self.path["save_dir"]:
@@ -307,11 +335,7 @@ class VHFRunner():
                     f"Desired save_dir of `{self.path["save_dir"]}` could not "
                     " be found.")
 
-            fn = datetime.datetime.now().isoformat() + \
-                "".join(result[3:]).replace('-', '_')
-            fn += '_' + '_'.join(flatten(self.phasemeter_kwargs.items()))
-            fn += "." + self.encode.ext
-            fn = qs(Path(self.path['save_dir']).joinpath(fn).resolve())
+            fn = self.get_filename(result)
             result.extend(['-o', fn])
         return result
 
