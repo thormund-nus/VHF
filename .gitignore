@@ -4,6 +4,7 @@ FYPLibrary
 */Data/*
 */Log/*
 .vscode
+vhf_func_gen/*.npz
 
 # Compiled outputs
 VHF/board_init/set_device_mode
