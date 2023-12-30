@@ -259,8 +259,8 @@ class VHFRunner():
         else:
             print("Sampling is expected to take "
                   f"{REDBOLD}{int(st//86400)} days "
-                  f"{int((st%86400)//3600)} hours "
-                  f"{((st%86400)%3600)/60:.3f} mins{RESET}.")
+                  f"{int((st % 86400)//3600)} hours "
+                  f"{((st % 86400) % 3600)/60:.3f} mins{RESET}.")
 
     def get_params(self) -> list[str]:
         """Obtain the parameter list invoked for VHF board."""
@@ -354,9 +354,7 @@ class VHFRunner():
                 sys.exit(1)
         result = {
             'args': self.subprocess_cmd(),
-            'check': True,
             'cwd': self.path['base_dir'],
-            'timeout': 7 + self.sample_time()
         }
         self.logger.debug("subprocess_Popen called. Returning %s", result)
         return result
@@ -368,6 +366,8 @@ class VHFRunner():
         into subprocess.run, through `stdout` arg.
         """
         result = self.subprocess_Popen()
+        result["check"] = True
+        result["timeout"] = 7 + self.sample_time()
 
         if self.to_file:
             result['capture_output'] = True
