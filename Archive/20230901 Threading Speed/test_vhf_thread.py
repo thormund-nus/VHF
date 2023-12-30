@@ -18,13 +18,13 @@ from multiprocessing import Process, Pipe
 from multiprocessing.connection import Connection
 import os
 from os import PathLike
-from parseVHF import VHFparser
 from pathlib import Path
 import subprocess
 import tempfile
 import threading
 from time import sleep
 from typing import Union
+from VHF.parse import VHFparser
 from VHF.runner import VHFRunner
 
 logger = logging.getLogger("VHF")

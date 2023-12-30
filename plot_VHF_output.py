@@ -6,9 +6,9 @@ from matplotlib import pyplot as plt
 import numpy as np
 from typing import Tuple, Callable
 from pathlib import Path
-from parseVHF import VHFparser  # relative import
 import scipy as sp
 from VHF.user_io import get_files, user_input_bool
+from VHF.parse import VHFparser
 
 
 def get_phase(o: VHFparser) -> np.ndarray:

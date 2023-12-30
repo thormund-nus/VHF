@@ -5,7 +5,6 @@ if module_path not in sys.path:
     sys.path.append(module_path)
 import numpy as np
 import matplotlib.pyplot as plt
-from parseVHF import VHFparser # relative import
 from numpy.fft import fft, fftfreq
 from obspy import read, UTCDateTime as UTC
 from obspy.core.trace import Trace as tr
@@ -17,6 +16,7 @@ from obspy.signal.trigger import classic_sta_lta
 from obspy.signal.trigger import z_detect
 from obspy.signal.trigger import carl_sta_trig
 from obspy.signal.trigger import trigger_onset
+from VHF.parse import VHFparser
 
 
 def helper(sampless, avg, sample_rate, skip):

@@ -14,15 +14,18 @@ from pathlib import Path
 module_path = str(Path(__file__).parents[1])
 if module_path not in sys.path:
     sys.path.append(module_path)
+module_path = str(Path(__file__).parents[3])
+if module_path not in sys.path:
+    sys.path.append(module_path)
 
 import logging
 import numpy as np
 from os import PathLike
 from pathlib import Path
-from parseVHF import VHFparser
 from scipy.ndimage import uniform_filter1d as moving_average
 from scipy.stats import moment
 from typing import Union
+from VHF.parse import VHFparser
 
 _PATH = Union[str, bytes, PathLike, Path]
 

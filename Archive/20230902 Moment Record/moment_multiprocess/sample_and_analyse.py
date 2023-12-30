@@ -5,7 +5,7 @@
 # 3. Process temp data and write into targetted output
 # 4. Wait to run step 1, unless called to terminate.
 
-from ..parseVHF import VHFparser # relative import
+# from ..parseVHF import VHFparser # relative import
 from multiprocessing.connection import Connection
 
 def sample_and_analyse_thread(comm: Connection, cmd, ):

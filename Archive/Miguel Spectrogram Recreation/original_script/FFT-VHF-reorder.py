@@ -8,7 +8,6 @@ if module_path not in sys.path:
 from datetime import timedelta
 import numpy as np
 import matplotlib.pyplot as plt
-from parseVHF import VHFparser # relative import
 from numpy.fft import fft, fftfreq
 from obspy import read, UTCDateTime as UTC
 from obspy.core.trace import Trace as tr
@@ -20,6 +19,7 @@ from obspy.signal.trigger import classic_sta_lta
 from obspy.signal.trigger import z_detect
 from obspy.signal.trigger import carl_sta_trig
 from obspy.signal.trigger import trigger_onset
+from VHF.parse import VHFparser
 
 def block_avg(my_arr: np.ndarray, N: int):
     """Returns a block average of 1D my_arr in blocks of N."""

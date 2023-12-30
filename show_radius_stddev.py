@@ -2,10 +2,10 @@ import datetime
 import logging
 import subprocess
 from matplotlib import pyplot as plt
-from parseVHF import VHFparser  # relative import
 from pathlib import Path
 from plot_VHF_output import plot_rad_spec, get_phase
 from tempfile import TemporaryFile
+from VHF.parse import VHFparser
 from VHF.runner import VHFRunner
 
 

@@ -20,11 +20,11 @@ import numpy as np
 import numpy.typing as npt
 from obspy.core import Stream, Trace, Stats
 from obspy.imaging.spectrogram import spectrogram
-from parseVHF import VHFparser  # relative import
 from plot_VHF_output import get_radius, get_spec, get_phase, plot_rad_spec
 from pathlib import Path
 from pynverse import inversefunc
 from typing import Callable
+from VHF.parse import VHFparser
 
 def block_avg(my_arr: np.ndarray, N: int):
     """Returns a block average of 1D my_arr in blocks of N."""

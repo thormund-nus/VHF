@@ -17,12 +17,12 @@ import multiprocessing as mp
 from multiprocessing import Process, Pipe
 from multiprocessing.connection import Connection
 from os import PathLike
-from parseVHF import VHFparser
 import subprocess
 import tempfile
 from time import sleep
 import threading
 from typing import Union
+from VHF.parse import VHFparser
 from VHF.runner import VHFRunner
 
 _PATH = Union[str, bytes, PathLike, Path]
