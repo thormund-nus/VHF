@@ -65,6 +65,11 @@ def main():
         action="store_true",
     )
     args.add_argument(
+        "-s", "--status",
+        help="",
+        action="store_true",
+    )
+    args.add_argument(
         "-v", "--verbose",
         help="Prints out more information.",
         action="store_true",
@@ -76,6 +81,7 @@ def main():
     )
     selection = args.parse_args()
     aggressiveness = selection.aggressive
+    show_only = selection.status
     verbosity = selection.verbose
     debug = selection.debug
 
@@ -114,6 +120,12 @@ def main():
 
     print(tabulate(map(table_method, devices), headers=table_head))
     print()
+
+    # Skip to end
+    if show_only:
+        print("Summary:")
+        show_all_dev_symlinks()
+        return
 
     # request for selection of boards to perform on.
     if len(devices) > 1:
