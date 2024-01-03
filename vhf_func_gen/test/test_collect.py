@@ -25,14 +25,22 @@ def log_listener(q):
     return
 
 
+def no_matplot(record: logging.LogRecord):
+    return not record.name.startswith("matplotlib") and not record.name.startswith("PIL")
+
+
 def main():
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
     streamhandler = logging.StreamHandler(sys.stdout)
-    streamhandler.setLevel(logging.INFO)
+    streamhandler.setLevel(logging.DEBUG)
     fmtter = logging.Formatter(
-        '[%(asctime)s%(msecs)d] (%(levelname)s) %(name)s - \t %(message)s', datefmt='%H:%M:%S:')
+        # the current datefmt str discards date information
+        '[%(asctime)s%(msecs)d] (%(levelname)s)\t[%(processName)s] %(name)s: \t %(message)s', datefmt='%H:%M:%S:'
+    )
+    fmtter.default_msec_format = "%s.03d"
     streamhandler.setFormatter(fmtter)
+    streamhandler.addFilter(no_matplot)
     logger.addHandler(streamhandler)
 
     conf_path = Path(__file__).parents[1].joinpath("VHF_FuncGen_params.ini")
@@ -63,6 +71,7 @@ def main():
     wp = Process(
         target=FuncGenExpt,
         args=(src, q, conf_path, npz_lock),
+        name="VHF01"
     )
     wp.start()
     logger = logging.getLogger("Main")

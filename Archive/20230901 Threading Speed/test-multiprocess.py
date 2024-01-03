@@ -36,12 +36,13 @@ def main():
     #     datefmt='%H:%M:%S:',
     #     level=logging.DEBUG
     # )
-    logger = logging.getLogger('test-multiprocess')
+    logger = logging.getLogger()
     # base logger has to be lower level than handlers
     logger.setLevel(logging.DEBUG)
 
     filehandler = logging.FileHandler(
-        filename=f"{Path(__file__).parents[2].joinpath('Log').joinpath('test-multi_'+datetime.datetime.now().strftime('%Y%m%d_%H%M%S')+'.log')}",
+        filename=f"{Path(__file__).parents[2].joinpath('Log').joinpath(
+            'test-multi_'+datetime.datetime.now().strftime('%Y%m%d_%H%M%S')+'.log')}",
         mode='a'
     )
     filehandler.setLevel(logging.DEBUG)
@@ -91,8 +92,12 @@ def main():
 
     def requeue_all_free():
         """Used for collecting all free VHF processes back into use."""
+        logger.debug(
+            "[Driver] requeue_all_free called. vhf_pipes = %s", vhf_pipes)
+        logger.debug(
+            "[Driver] available_pipes = %s", available_pipes)
         for pipe, _ in vhf_pipes:
-            # print(f"[Driver] requeue looping: {pipe = }")
+            logger.debug("[Driver] requeue looping: pipe = %s", pipe)
             try:
                 if pipe.poll():
                     logger.info("[Driver] Polled pipe.")
