@@ -1,6 +1,7 @@
 tabulate
 PyQt6
 PyGObject
+pytest
 pyserial
 python-usbtmc
 pyusb
