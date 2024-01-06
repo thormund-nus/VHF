@@ -56,6 +56,20 @@ class GenericChild:
         raise NotImplementedError
 
 
+class Regular(GenericChild):
+    def main_func(self):
+        while (data := self.comm.recv()):
+            action = data[0]
+            match action:
+                case b'0':
+                    msg = data[1]
+                    self.logger.info(
+                        "Child is doing busy work with msg = %s", msg)
+                    sleep(0.3)
+                case b'2':
+                    self.close()
+
+
 def test_IdentifiedProcess_classvariable():
     """Ensure that set_close_delay on IdentifiedProcess works."""
     expected = timedelta(seconds=1)
@@ -83,6 +97,7 @@ def test_unresponsive_child_process():
 
     # start of test
     IdentifiedProcess.set_close_delay(timedelta(seconds=0.5))
+    IdentifiedProcess.set_process_name("BadChild")
     q = Queue()
     sink, src = Pipe()
 
@@ -102,26 +117,15 @@ def test_unresponsive_child_process():
         sleep(0.6)
 
     assert not badproc.is_alive()
+    badproc.close()
 
 
 def test_regular_child_process():
     """In the event child process is stuck ad infinitum, ensure that identified
     process is capable of closing child process."""
-    # define a bad class first
-    class Regular(GenericChild):
-        def main_func(self):
-            while (data := self.comm.recv()):
-                action = data[0]
-                match action:
-                    case b'0':
-                        msg = data[1]
-                        self.logger.info(
-                            "Child is doing busy work with msg = %s", msg)
-                        sleep(0.3)
-                    case b'2':
-                        self.close()
     # start of test
     IdentifiedProcess.set_close_delay(timedelta(seconds=0.5))
+    IdentifiedProcess.set_process_name("RegularChild")
     q = Queue()
     sink, src = Pipe()
 
@@ -138,3 +142,47 @@ def test_regular_child_process():
     while not child.close_proc():
         sleep(0.6)
     assert not child.is_alive()
+    child.close()
+
+
+def test_logger_freeup():
+    """Ensure that creation of multiple processes do not leave a mess."""
+    logger = getLogger()
+    IdentifiedProcess.set_close_delay(timedelta(seconds=0.5))
+    IdentifiedProcess.set_process_name("RegularChild")
+    childs = []
+    q = Queue()
+    for _ in range(10):
+        sink, src = Pipe()
+        childs.append(
+            IdentifiedProcess(
+                Process(
+                    target=Regular,
+                    args=(src, q),
+                ),
+                sink,
+                src
+            )
+        )
+    logger.info("Created children")
+    # for c in childs:
+    #     c.connection.send((b'0', '1'))
+
+    for c in childs[:]:
+        c.close_proc()
+        childs.remove(c)
+        c.close()
+
+    import gc
+    gc.collect()
+
+    # https://stackoverflow.com/a/53250066
+    loggers = [logging.getLogger(name)
+               for name in logging.root.manager.loggerDict]
+    logger.info("loggers = %s", loggers)
+    # logger.info('filter(lambda x: "05" in str(logging.getLogger(x), logging.root.manager.loggerDict) = %s', list(
+    #     filter(lambda x: "05" in str(logging.getLogger(
+    #         x)), logging.root.manager.loggerDict))
+    # )
+    assert not any(filter(lambda x: "09" in str(logging.getLogger(
+        x)), logging.root.manager.loggerDict))

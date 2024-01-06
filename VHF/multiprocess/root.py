@@ -40,6 +40,11 @@ class IdentifiedProcess:
     set_close_delay(delay: timedelta): None
         Number of attempts at close_proc before killing process forcefully is
         spaced out with the delay prescribed here.
+    set_process_name(name: str): None
+        For purposes of debugging, the associated process name generated in
+        logging formatter "processName" see:
+        https://docs.python.org/3/library/logging.html#logrecord-attributes
+        side effect: resets id to right of processName to 0.
 
     Methods
     -------
@@ -47,20 +52,35 @@ class IdentifiedProcess:
         Attempts to join the process, and cleanup relevant objects.
     is_alive: bool
         Determines if process is alive.
+    close: None
+        Close IdentifiedProcess. Cleanups generated logger.
 
     """
 
     _to_close_delay: ClassVar[timedelta]
+    _count: ClassVar[int] = 0
+    _process_name: ClassVar[str] = "Process"
 
     @classmethod
     def set_close_delay(cls, delay: timedelta):
         """Set delay across all instances between Process.join attempts."""
         cls._to_close_delay = delay
 
+    @classmethod
+    def set_process_name(cls, name: str):
+        """Set delay across all instances between Process.join attempts."""
+        cls._process_name = name
+        cls._count = 0
+
+    def _increment_count(self):
+        """Increment instance counter."""
+        type(self)._count += 1
+
     def __init__(self, process: Process, connection: Connection,
-                 child_connection: Connection):
+                 child_connection: Connection, init_timeout: float = 2.):
         self._createLogger()
         self._process: Process = process
+        self._process.name = type(self)._process_name + str(self._id)
         self._connection: Connection = connection
         self._childconnection: Connection = child_connection
         self._pid: int = None
@@ -69,7 +89,7 @@ class IdentifiedProcess:
         self._to_close_attempt: int = 0
         self._closed: bool = False
         self._process.start()
-        if self.connection.poll(2):
+        if self.connection.poll(init_timeout):
             retval = self.connection.recv()
         else:
             raise ValueError("Failed to recieve initialisation status.")
@@ -80,9 +100,13 @@ class IdentifiedProcess:
         if retval[0] != 0:
             raise ValueError(f"{self._process} initialised with errors.")
         self.pid = retval[1]
+        self.logger.info("Successfully initialised process with PID=%s, name=%s",
+                         self.pid, self.process.name)
 
     def _createLogger(self):
-        self.logger = getLogger(__name__)
+        self._id = type(self)._count
+        self.logger = getLogger(f"{__name__}.{str(self._id).zfill(2)}")
+        self._increment_count()
 
     @property
     def process(self) -> Process:
@@ -160,7 +184,8 @@ class IdentifiedProcess:
                     self.logger.warning("Attempting to forcefully kill.")
                     # os.system(f"kill -9 {self._pid}")
                     self._process.kill()
-                    self._childconnection.close()  # Is this enough?
+                    # https://stackoverflow.com/q/71532034
+                    # self._childconnection.close()  # Is this enough?
                     sleep(0.2)
                     self._join_proc()
                     return self._closed
@@ -169,3 +194,15 @@ class IdentifiedProcess:
                 if not self.is_alive():
                     self._closed = True
             return self._closed
+
+    def close(self):
+        """Cleanup IdentifiedProcess instance."""
+        # assert process has already been dead
+        if self.is_alive():
+            raise Exception("Cleanup of IdentifiedProcess before Process")
+
+        # https://stackoverflow.com/a/58800703
+        name = self.logger.name
+        self.logger.debug("close called, obtaining name = %s", name)
+        del self.logger
+        del logging.root.manager.loggerDict[name]
