@@ -16,6 +16,7 @@ module_path = str(Path(__file__).parents[1])
 if module_path not in sys.path:
     sys.path.append(module_path)
 from VHF.multiprocess.root import IdentifiedProcess  # noqa
+from VHF.multiprocess.signals import cont, HUP  # noqa
 
 
 class GenericChild:
@@ -58,15 +59,20 @@ class GenericChild:
 
 class Regular(GenericChild):
     def main_func(self):
+        class Signals:
+            action_cont = cont()[0]
+            action_hup = HUP[0]
+
+        signal = Signals()
         while (data := self.comm.recv()):
             action = data[0]
             match action:
-                case b'0':
+                case signal.action_cont:
                     msg = data[1]
                     self.logger.info(
                         "Child is doing busy work with msg = %s", msg)
                     sleep(0.3)
-                case b'2':
+                case signal.action_hup:
                     self.close()
 
 
@@ -138,7 +144,7 @@ def test_regular_child_process():
         src
     )
     logging.info("child.pid = %d", child.pid)
-    child.connection.send((b'0', '1'))
+    child.connection.send(cont('1'))
     while not child.close_proc():
         sleep(0.6)
     assert not child.is_alive()
@@ -166,7 +172,8 @@ def test_logger_freeup():
         )
     logger.info("Created children")
     # for c in childs:
-    #     c.connection.send((b'0', '1'))
+    #     c.connection.send(cont('1'))
+    # sleep(0.6)
 
     for c in childs[:]:
         c.close_proc()

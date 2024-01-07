@@ -34,6 +34,13 @@ class IdentifiedProcess:
         The process being managed by this process wrapper.
     connection: Connection
         The parent end of the connection used to talk to (child) process.
+    child_connection: Connection
+        The child end of the connection. This might be necessary to close due
+        to https://stackoverflow.com/q/71532034. Further traige if memleaks in
+        the future becomes severe would be necessary.
+    init_timeout: float
+        Time (in seconds) given to child class to return back something before
+        assuming it has an issue.
 
     Class Methods
     -------------

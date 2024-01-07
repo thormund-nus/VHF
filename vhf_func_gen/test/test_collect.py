@@ -13,12 +13,13 @@ module_path = str(Path(__file__).parents[2].joinpath(
 if module_path not in sys.path:
     sys.path.append(module_path)
 from collect import FuncGenExpt  # noqa
+from VHF.multiprocess.signals import cont, HUP  # noqa
 
 
 def log_listener(q):
     while True:
         record = q.get()
-        if record is None:
+        if record == HUP:
             break
         logger = logging.getLogger(record.name)
         logger.handle(record)
@@ -80,8 +81,7 @@ def main():
     child_pid = data[1]
     logger.info("Child pid: %s", child_pid)
     sink.send(
-        (
-            b'0',
+        cont(
             {"power": "0.3dBm", "i": str(1)},
             (1, 2)
         )
@@ -90,10 +90,10 @@ def main():
     data = sink.recv_bytes()
     logger.info("%s: Recieved %s", datetime.now(), data)
     # cleanup and close
-    sink.send((b'2',))
+    sink.send(HUP)
     wp.join()
     sink.close()
-    q.put(None)
+    q.put(HUP)
     lp.join()
 
     logger.info("Main is exiting.")

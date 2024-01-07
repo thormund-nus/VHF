@@ -59,7 +59,6 @@ class FuncGenExpt(genericVHF):
         # 1. init class specific attributes
         super().__init__(comm, q, conf_path)
         self.npz_lock: LockType = npz_lock  # Acquired prior to writing to common npz
-        self.fail_count: int = 0
         # https://github.com/matplotlib/matplotlib/issues/20300#issuecomment-848201196
         matplotlib.use('agg')  # No GUI is being displayed. Saves memory.
 
@@ -93,114 +92,10 @@ class FuncGenExpt(genericVHF):
         self.ignore_first = self.conf.getint(
             "Multiprocess", "parse_ignore_left")
 
-    def main_func(self):
-        """Awaits and acts on instructions from root process.
-
-        We create the protocol where child processes recieves all messages
-        within tuples. data = (action, _).
-        1. action = b'0'; (b'0', p: mapping, npz_loc: tuple)
-            Signals to continue sampling once.
-            - p here is treated as mapping p to be passed to
-              VHFRunner._overwrite_attr to obtain relevant file name for
-              saving.
-            - npz_loc here is passed into analyse_parse, to guide where in the
-              common npz_file to be written to. Used directly as a slice, i.e.:
-              npz_file["arr_name"][npz_loc] = new value
-        2. action = b'2'; (b'2',)
-            Signals to gracefully terminate process.
-
-        Messages sent back:
-        1. b'0':
-            Signals success of data collection. Do not send again for
-            successful data analysis.
-        2. b'1':
-            Generic error. Possible situations:
-            a. Tempfile created could not be opened, and file from NAS could
-            also not be found.
-        3. b'2':
-            Recieved SIGINT. Propagate up.
-        4. b'3':
-            Repeated failed attempts to sample data.
-        5. (0, PID):
-            Initialisation success, along with PID of child process.
-            Relevant: multiprocessing.active_children()
-
-
-        - During SIGINT, we aim to close all child processes gracefully, and
-          only have the root process exit with exit_code 2.
-        - In the even main_func fails to be able to collect the data after ?
-          times, we propagate the error up and aim to close everything if
-          forceful, otherwise only the existing VHF child process, and have the
-          root process create a new child. This should be solely managed in
-          root, and not for the child VHF process to handle.
-        """
-        self.logger.info("Now in main_func awaiting.")
-        try:
-            # This step is blocking until self.comm receives
-            while (data := self.comm.recv()):
-                self.logger.debug("Recieved %s", data)
-                action = data[0]
-                match action:
-                    case b'0':
-                        # Update how vhf_runner property will be like for
-                        # sample_once to use.
-                        msg = data[1]
-                        self.vhf_runner._overwrite_attr(msg)
-
-                        # Start sample.
-                        self.logger.info("Sampling now!")
-                        while not self.sample_once(
-                            perm_target=(pname := quote(str(
-                                self.save_dir.joinpath(self.vhf_runner.get_filename(
-                                    self.vhf_runner.get_params()))
-                            )))
-                        ):
-                            self.logger.warn("Failed to run VHF.")
-                            self.fail_count += 1
-                            if self.fail_count >= self.FAIL_MAX:
-                                self.logger.error(
-                                    "Exceeded allowable number of failed "
-                                    "attempts trying to sample out of VHF "
-                                    "board. Terminating...")
-                                self.comm.send_bytes(b'3')
-                                self.close()
-                            sleep(0.2)
-                        # Now hand off for data analysis, and writing to npz
-                        # file.
-                        parsed = self.get_parsed(pname)
-                        if parsed is None:
-                            self.logger.error(
-                                "File could not be obtained for analysis.")
-                            # failed to obtain files!
-                            self.comm.send_bytes(b'1')  # Generic error
-                            self.tmp_close()  # Cleanup
-                            continue
-
-                        # Release tmp early.
-                        self.tmp_close()
-
-                        # Analyse and wrap up.
-                        self.analyse_parse(parsed, data[2], pname)
-                        self.fail_count = 0
-                        self.logger.info("Analysis and plot complete!")
-
-                    case b'2':
-                        self.logger.info("Recieved closing signal.")
-                        self.close()
-
-                    case _:
-                        self.logger.warning("Unknown message recieved!")
-                        self.exit_code = 1
-                        self.close()
-
-        except KeyboardInterrupt:
-            self.logger.warn(
-                "Recieved KeyboardInterrupt Signal! Attempting to propagate shutdown gracefully.")
-            self.comm.send(b'2')
-            self.close()
-
-    def analyse_parse(self, parsed: VHFparser, npz_loc: tuple, pname: str):
+    def analyse_parse(self, parsed: VHFparser, pname: str, *args):
         """Take parsed object and saves relevant bits into common npz_file."""
+        npz_loc: tuple = args[0][0]
+
         self.logger.debug("npz_loc = %s", npz_loc)
 
         # Parsed data -> Relevant information

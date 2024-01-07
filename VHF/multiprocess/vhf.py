@@ -9,14 +9,14 @@ Common things such as disk I/O can be provided in this generic class, but the
 rest need to be implemented on a per-experiment basis.
 """
 
-from abc import ABCMeta
+from abc import ABCMeta, abstractmethod, abstractproperty
+from configparser import ConfigParser
 from datetime import datetime
 import logging
 from logging import getLogger
 from logging.handlers import QueueHandler
 from multiprocessing import Queue
 from multiprocessing.connection import Connection
-from multiprocessing.synchronize import Lock as LockType
 import os
 from os import PathLike
 from pathlib import Path
@@ -26,7 +26,9 @@ from subprocess import PIPE
 import sys
 from tempfile import NamedTemporaryFile
 from tempfile import _TemporaryFileWrapper
+from time import sleep
 from typing import Optional, Union
+from .signals import HUP, cont
 from ..metatype import abstract_attribute
 from ..runner import VHFRunner
 from ..parse import VHFparser
@@ -45,7 +47,7 @@ class genericVHF(metaclass=ABCMeta):
     across multiple experiments. The concrete implementation should then be
     able to fetch data out the VHF board and process said data in a manner that
     does not become CPU blocking during data analysis, while having the next
-    multiprocess (concrete) instance perform the data sampling. w
+    multiprocess (concrete) instance perform the data sampling.
     """
 
     def __init__(self, comm: Connection, q: Queue, vhf_conf_path: _PATH):
@@ -67,6 +69,7 @@ class genericVHF(metaclass=ABCMeta):
         self.exit_code: int = 0  # Exit code for sys.exit()
         self.comm: Connection = comm
         self.vhf_conf_path: _PATH = vhf_conf_path
+        self.fail_count: int = 0
 
     def close(self):
         """Close up class that pulls data from VHF."""
@@ -217,4 +220,161 @@ class genericVHF(metaclass=ABCMeta):
     @abstract_attribute
     def vhf_runner(self) -> VHFRunner:
         """VHFRunner object."""
+        raise NotImplementedError
+
+    def main_func(self):
+        """Awaits and acts on instructions from root process.
+
+        We create the protocol where child processes recieves all messages
+        within tuples. data = (action, _).
+        1. data = cont(p: mapping, npz_loc: tuple)
+            Signals to continue sampling once.
+            - p here is treated as mapping p to be passed to
+              VHFRunner._overwrite_attr to obtain relevant file name for
+              saving.
+            - npz_loc here is passed into analyse_parse, to guide where in the
+              common npz_file to be written to. Used directly as a slice, i.e.:
+              npz_file["arr_name"][npz_loc] = new value
+        2. data = HUP
+            Signals to gracefully terminate process.
+
+        Messages sent back:
+        1. b'0':
+            Signals success of data collection. Do not send again for
+            successful data analysis.
+        2. b'1':
+            Generic error. Possible situations:
+            a. Tempfile created could not be opened, and file from NAS could
+            also not be found.
+        3. b'2':
+            Recieved SIGINT. Propagate up.
+        4. b'3':
+            Repeated failed attempts to sample data.
+        5. (0, PID):
+            Initialisation success, along with PID of child process.
+            Relevant: multiprocessing.active_children()
+
+
+        - During SIGINT, we aim to close all child processes gracefully, and
+          only have the root process exit with exit_code 2.
+        - In the even main_func fails to be able to collect the data after ?
+          times, we propagate the error up and aim to close everything if
+          forceful, otherwise only the existing VHF child process, and have the
+          root process create a new child. This should be solely managed in
+          root, and not for the child VHF process to handle.
+        """
+        self.logger.info("Now in main_func awaiting.")
+
+        class Signals:
+            action_cont = cont()[0]
+            action_hup = HUP[0]
+
+        signal = Signals()
+
+        try:
+            # This step is blocking until self.comm receives
+            while (data := self.comm.recv()):
+                self.logger.debug("Recieved %s", data)
+                action = data[0]
+                match action:
+                    case signal.action_cont:  # yet to use signal.is_cont method
+                        # Update how vhf_runner property will be like for
+                        # sample_once to use.
+                        msg = data[1]
+                        self.vhf_runner._overwrite_attr(msg)
+
+                        # Start sample.
+                        self.logger.info("Sampling now!")
+                        while not self.sample_once(
+                            perm_target=(pname := quote(str(
+                                self.save_dir.joinpath(self.vhf_runner.get_filename(
+                                    self.vhf_runner.get_params()))
+                            )))
+                        ):
+                            self.logger.warn("Failed to run VHF.")
+                            self.fail_count += 1
+                            if self.fail_count >= self.FAIL_MAX:
+                                self.logger.error(
+                                    "Exceeded allowable number of failed "
+                                    "attempts trying to sample out of VHF "
+                                    "board. Terminating...")
+                                self.comm.send_bytes(b'3')
+                                self.close()
+                            sleep(0.2)
+                        # Now hand off for data analysis, and writing to npz
+                        # file.
+                        parsed = self.get_parsed(pname)
+                        if parsed is None:
+                            self.logger.error(
+                                "File could not be obtained for analysis.")
+                            # failed to obtain files!
+                            self.comm.send_bytes(b'1')  # Generic error
+                            self.tmp_close()  # Cleanup
+                            continue
+
+                        # Release tmp early.
+                        self.tmp_close()
+
+                        # Analyse and wrap up.
+                        self.analyse_parse(parsed, pname, data[2:])
+                        self.fail_count = 0
+                        self.logger.info("Analysis and plot complete!")
+
+                    case signal.action_hup:
+                        self.logger.info("Recieved closing signal.")
+                        self.close()
+
+                    case _:
+                        self.logger.warning("Unknown message recieved!")
+                        self.exit_code = 1
+                        self.close()
+
+        except KeyboardInterrupt:
+            self.logger.warn(
+                "Recieved KeyboardInterrupt Signal! Attempting to propagate shutdown gracefully.")
+            self.comm.send(b'2')  # TODO: use signals.py
+            self.close()
+
+    @abstractmethod
+    def analyse_parse(self, parsed: VHFparser, pname: str, *args):
+        """After having obtained sampled trace into VHFparser object,
+        subclasses are free to utilise the VHFparser object to save into a
+        common npz file or any other followup with the parsed trace data.
+
+        Inputs
+        ------
+        parsed: VHFparser
+            This object is provided for when sample_once in main_func succeeds.
+        pname: str
+            This is a shell escaped string for which the binary data was saved
+            to permanently, if the generated temporary file had issues. Also
+            provided for by main_func success.
+        *args:
+            Anything provided for by comm.recv()[2:]
+        """
+        # Use of args is in accordance with Liskov Substitution Principle.
+        raise NotImplementedError
+
+    @abstract_attribute
+    def conf(self) -> ConfigParser:
+        """ConfigParser object to be implemented by concrete implementation.
+
+        This is preferrably created in a conf_parse routine during init.
+        """
+        raise NotImplementedError
+
+    @abstract_attribute
+    def save_dir(self) -> Path:
+        """Directory which trace files will be permanently saved to.
+
+        This is preferrably created in a conf_parse routine during init.
+        """
+        raise NotImplementedError
+
+    @abstractproperty
+    def FAIL_MAX(self) -> int:
+        """Number of failed attempts getting trace before escalating error.
+
+        This is preferrably created in a conf_parse routine during init.
+        """
         raise NotImplementedError
