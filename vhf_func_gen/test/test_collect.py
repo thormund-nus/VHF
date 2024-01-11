@@ -72,6 +72,7 @@ def main():
     wp = Process(
         target=FuncGenExpt,
         args=(src, q, conf_path, npz_lock),
+        kwargs={"request_requeue": False},
         name="VHF01"
     )
     wp.start()

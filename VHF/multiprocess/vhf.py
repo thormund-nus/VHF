@@ -28,7 +28,7 @@ from tempfile import NamedTemporaryFile
 from tempfile import _TemporaryFileWrapper
 from time import sleep
 from typing import Optional, Union
-from .signals import HUP, cont
+from .signals import HUP, cont, ChildSignals, Signals
 from ..metatype import abstract_attribute
 from ..runner import VHFRunner
 from ..parse import VHFparser
@@ -50,7 +50,11 @@ class genericVHF(metaclass=ABCMeta):
     multiprocess (concrete) instance perform the data sampling.
     """
 
-    def __init__(self, comm: Connection, q: Queue, vhf_conf_path: _PATH):
+    # Definitions and constants (https://stackoverflow.com/a/75829903)
+    FAIL_MAX: int
+
+    def __init__(self, comm: Connection, q: Queue, vhf_conf_path: _PATH,
+                 *args, **kwargs):
         """Provisions generic methods associated to VHF collection of traces.
 
         Inputs
@@ -62,6 +66,13 @@ class genericVHF(metaclass=ABCMeta):
             For sharing a queue handler to ensure multiprcess-safe logging.
             Passed into root logger before creating self.logger =
             logging.getLogger(__name__);
+        **kwargs
+            Additional keywords. Currently supports:
+            - request_requeue: bool = True
+              Defaults to True. Set to False if you would like the root process
+              instead of an async process, such as VHFPool with multithreaded
+              requeue, to perform requeue management in a linear manner
+              instead.
         """
         # 1. logging!
         self.init_log(q)
@@ -70,6 +81,9 @@ class genericVHF(metaclass=ABCMeta):
         self.comm: Connection = comm
         self.vhf_conf_path: _PATH = vhf_conf_path
         self.fail_count: int = 0
+        self.c_sig = ChildSignals()
+        self.request_requeue: bool = bool(kwargs.get(
+            "request_requeue")) if "request_requeue" in kwargs else True
 
     def close(self):
         """Close up class that pulls data from VHF."""
@@ -141,7 +155,7 @@ class genericVHF(metaclass=ABCMeta):
                         self.logger.debug("Retcode: %s", retcode)
 
             end_time = datetime.now()
-            self.comm.send_bytes(b'0')
+            self.comm.send_bytes(self.c_sig.action_cont)
             self.logger.debug("subprocess.run had arguments: %s", str(sb_run))
             self.logger.debug("subprocess.run took time: %s",
                               end_time - start_time_sample)
@@ -235,24 +249,33 @@ class genericVHF(metaclass=ABCMeta):
             - npz_loc here is passed into analyse_parse, to guide where in the
               common npz_file to be written to. Used directly as a slice, i.e.:
               npz_file["arr_name"][npz_loc] = new value
-        2. data = HUP
+        2. data = signals.HUP
             Signals to gracefully terminate process.
 
         Messages sent back:
-        1. b'0':
+        1. ChildSignals.action_cont:
             Signals success of data collection. Do not send again for
             successful data analysis.
-        2. b'1':
+        2. ChildSignals.action_generic_error:
             Generic error. Possible situations:
             a. Tempfile created could not be opened, and file from NAS could
             also not be found.
-        3. b'2':
+            Please queue into available child processes upon recieving this,
+            unless otherwise desired.
+        3. ChildSignals.action_hup:
             Recieved SIGINT. Propagate up.
-        4. b'3':
+        4. ChildSignals.too_many_attempts:
             Repeated failed attempts to sample data.
+            Root process is to decide if to close all sibling processes and
+            terminate, or if to fail forward. This process is to be terminated
+            still.
         5. (0, PID):
             Initialisation success, along with PID of child process.
             Relevant: multiprocessing.active_children()
+        6. ChildSignals.action_request_requeue:
+            Only if **kwargs has request_requeue = True. Emits a 2nd response
+            after successful sampling that process is awaiting to be returned
+            to join available queue.
 
 
         - During SIGINT, we aim to close all child processes gracefully, and
@@ -265,11 +288,8 @@ class genericVHF(metaclass=ABCMeta):
         """
         self.logger.info("Now in main_func awaiting.")
 
-        class Signals:
-            action_cont = cont()[0]
-            action_hup = HUP[0]
-
         signal = Signals()
+        c_sig = self.c_sig
 
         try:
             # This step is blocking until self.comm receives
@@ -298,7 +318,7 @@ class genericVHF(metaclass=ABCMeta):
                                     "Exceeded allowable number of failed "
                                     "attempts trying to sample out of VHF "
                                     "board. Terminating...")
-                                self.comm.send_bytes(b'3')
+                                self.comm.send_bytes(c_sig.too_many_attempts)
                                 self.close()
                             sleep(0.2)
                         # Now hand off for data analysis, and writing to npz
@@ -308,7 +328,7 @@ class genericVHF(metaclass=ABCMeta):
                             self.logger.error(
                                 "File could not be obtained for analysis.")
                             # failed to obtain files!
-                            self.comm.send_bytes(b'1')  # Generic error
+                            self.comm.send_bytes(c_sig.action_generic_error)
                             self.tmp_close()  # Cleanup
                             continue
 
@@ -319,6 +339,8 @@ class genericVHF(metaclass=ABCMeta):
                         self.analyse_parse(parsed, pname, data[2:])
                         self.fail_count = 0
                         self.logger.info("Analysis and plot complete!")
+                        if self.request_requeue:
+                            self.comm.send_bytes(c_sig.action_request_requeue)
 
                     case signal.action_hup:
                         self.logger.info("Recieved closing signal.")
@@ -332,7 +354,7 @@ class genericVHF(metaclass=ABCMeta):
         except KeyboardInterrupt:
             self.logger.warn(
                 "Recieved KeyboardInterrupt Signal! Attempting to propagate shutdown gracefully.")
-            self.comm.send(b'2')  # TODO: use signals.py
+            self.comm.send(c_sig.action_hup)
             self.close()
 
     @abstractmethod
@@ -366,14 +388,6 @@ class genericVHF(metaclass=ABCMeta):
     @abstract_attribute
     def save_dir(self) -> Path:
         """Directory which trace files will be permanently saved to.
-
-        This is preferrably created in a conf_parse routine during init.
-        """
-        raise NotImplementedError
-
-    @abstractproperty
-    def FAIL_MAX(self) -> int:
-        """Number of failed attempts getting trace before escalating error.
 
         This is preferrably created in a conf_parse routine during init.
         """

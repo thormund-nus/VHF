@@ -27,7 +27,8 @@ _PATH = Union[str, PathLike, Path]
 class FuncGenExpt(genericVHF):
     """Process for performing 1x sample of VHF and relevant followup."""
 
-    def __init__(self, comm: Connection, q: Queue, conf_path: _PATH, npz_lock: LockType):
+    def __init__(self, comm: Connection, q: Queue, conf_path: _PATH,
+                 npz_lock: LockType, **kwargs):
         """Perform data collection and analysis as instructed by root.
 
         Communicated with via VHF Pool; in charge of collecting 1 round of
@@ -50,6 +51,7 @@ class FuncGenExpt(genericVHF):
             This is a lock create from root that is shared across all VHF
             processes, to ensure that there is no race condition from writing
             to the shared npz file.
+        **kwargs: Passed to genericVHF.
         """
         # This function is immediately runned when being started from
         # multiprocess. We need to send back to the main loop that
@@ -57,13 +59,15 @@ class FuncGenExpt(genericVHF):
         # loop.
 
         # 1. init class specific attributes
-        super().__init__(comm, q, conf_path)
+        super().__init__(comm, q, conf_path, kwargs=kwargs)
         self.npz_lock: LockType = npz_lock  # Acquired prior to writing to common npz
         # https://github.com/matplotlib/matplotlib/issues/20300#issuecomment-848201196
         matplotlib.use('agg')  # No GUI is being displayed. Saves memory.
+        self.logger.debug("matplotlib set to agg backend")
 
         # 2. parse conf file
         self.conf_parse(conf_path)
+        self.logger.debug("conf_parse complete.")
 
         self.vhf_runner = VHFRunner(conf_path)
 
