@@ -53,7 +53,7 @@ def main():
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         logging.info("Subprocess ran with %s", str(sb_run))
         logging.critical("exc: %s", exc)
-        logging.critical("exc.stderr = ", exc.stderr)
+        logging.critical("exc.stderr = %s", exc.stderr)
         logging.critical("", exc_info=True)
         if isinstance(exc, subprocess.CalledProcessError):
             print(f"Process returned with error code {exc.returncode}")

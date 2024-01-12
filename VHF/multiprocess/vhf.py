@@ -166,7 +166,7 @@ class genericVHF(metaclass=ABCMeta):
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             self.logger.info("Subprocess ran with %s", str(sb_run))
             self.logger.critical("exc: %s", exc)
-            self.logger.critical("exc.stderr = ", exc.stderr)
+            self.logger.critical("exc.stderr = %s", exc.stderr)
             self.logger.critical("", exc_info=True)
             if isinstance(exc, subprocess.CalledProcessError):
                 self.logger.critical(
