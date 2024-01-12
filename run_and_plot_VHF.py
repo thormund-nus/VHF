@@ -75,7 +75,7 @@ def main():
 
     phase = get_phase(parsed)
     print(f"Phase mean: {phase[12000:].mean()}\nPhase Std Dev: {phase[12000:].std()}")
-    fig = plot_rad_spec(True, True)(parsed, phase)
+    fig = plot_rad_spec(True, False, True)(parsed, phase)
     view_const = 2.3
     fig.legend()
     fig.set_size_inches(view_const * 0.85 *

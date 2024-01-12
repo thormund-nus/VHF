@@ -49,14 +49,15 @@ def get_spec(o: VHFparser) -> Tuple[np.ndarray, np.ndarray]:
     return f, spec
 
 
-def plot_rad_spec(radius: bool, spectrum: bool) -> Callable:
-    """
-    Yield desired function for plotting phase, radius and spectrum.
+def plot_rad_spec(radius: bool, velocity: bool, spectrum: bool) -> Callable:
+    """Yield desired function for plotting phase, radius and spectrum.
 
     Input
     -----
     radius: bool
         Plots sqrt(I^2+Q^2)
+    velocity: bool
+        Plots r[i+1] - r[i] for all valid i, divided by time between samples.
     spectrum: bool
         Plots periodogram
     """
@@ -76,10 +77,10 @@ def plot_rad_spec(radius: bool, spectrum: bool) -> Callable:
 
     def plotr(r_ax, o: VHFparser, phase: np.ndarray):
         t = np.arange(len(phase)) / o.header["sampling freq"]
-        lower_lim = np.max(np.where(t < 0.001))
+        lower_lim = np.max(np.where(t < 0.003))
         r_ax.plot(
             t[lower_lim:],
-            rs:= get_radius(o)[lower_lim:],
+            rs := get_radius(o)[lower_lim:],
             color="mediumblue",
             linewidth=0.2,
             label="Radius",
@@ -90,7 +91,7 @@ def plot_rad_spec(radius: bool, spectrum: bool) -> Callable:
         r_ax_histy.tick_params(axis="y", labelleft=False, length=0)
         scatter_hist(rs, r_ax_histy)
 
-    def plotsp(sp_ax, o: VHFparser):
+    def plotsp(sp_ax, o: VHFparser, *_):
         sp_ax.scatter(
             *get_spec(o),
             color="mediumblue",
@@ -104,41 +105,39 @@ def plot_rad_spec(radius: bool, spectrum: bool) -> Callable:
         sp_ax.set_yscale("log")
         sp_ax.set_xscale("log")
 
-    # functions to return
-    def plot_phi(o: VHFparser, phase: np.ndarray):
-        fig, ax = plt.subplots(nrows=1, ncols=1)
-        plotphi(ax, o, phase)
+    def plotv(v_ax, o: VHFparser, phase: np.ndarray):
+        t = np.arange(len(phase)-1) / o.header["sampling freq"]
+        velocity = np.diff(phase) * o.header["sampling freq"]
+        lower_lim = np.max(np.where(t < 0.003))
+        v_ax.plot(
+            t[lower_lim:],
+            velocity[lower_lim:],
+            color="mediumblue",
+            linewidth=0.2,
+            label="Phase First Derivative",
+        )
+        v_ax.set_ylabel(r"$r'$/ADC units $s^{-1}$", usetex=True)
+        v_ax.set_xlabel(r"$t$/s", usetex=True)
+
+    def plot_generic(o: VHFparser, phase: np.ndarray):
+        options = [radius, velocity, spectrum]
+        options_plots = [plotr, plotv, plotsp]
+        options_sharex = [True, True, False]  # sharex with axs[0], i.e.: r
+        n = 1+sum(options)
+        fig, axs = plt.subplots(nrows=n, ncols=1)
+        i = 0
+        plotphi(axs[i], o, phase)
+        for option, plot_, opt_x in zip(options, options_plots, options_sharex):
+            if option:
+                i += 1
+                ax = axs[i]
+                if opt_x:
+                    ax.sharex(axs[0])
+                plot_(ax, o, phase)
+
         return fig
 
-    def plot_phi_and_rad(o: VHFparser, phase: np.ndarray):
-        fig, [phi_ax, r_ax] = plt.subplots(nrows=2, ncols=1, sharex=True)
-        plotphi(phi_ax, o, phase)
-        plotr(r_ax, o, phase)
-        return fig
-
-    def plot_phi_and_spec(o: VHFparser, phase: np.ndarray):
-        fig, [phi_ax, sp_ax] = plt.subplots(nrows=2, ncols=1, sharex=False)
-        plotphi(phi_ax, o, phase)
-        plotsp(sp_ax, o)
-        return fig
-
-    def plot_all(o: VHFparser, phase: np.ndarray):
-        fig, [phi_ax, r_ax, sp_ax] = plt.subplots(
-            nrows=3, ncols=1, sharex=False)
-        phi_ax.sharex(r_ax)
-        plotphi(phi_ax, o, phase)
-        plotr(r_ax, o, phase)
-        plotsp(sp_ax, o)
-        return fig
-
-    if not radius and not spectrum:
-        return plot_phi
-    elif radius and not spectrum:
-        return plot_phi_and_rad
-    elif not radius and spectrum:
-        return plot_phi_and_spec
-    elif radius and spectrum:
-        return plot_all
+    return plot_generic
 
 
 def main():
@@ -162,16 +161,18 @@ def main():
     parsed = VHFparser(file)
     print(f"Debug {parsed.header = }")
     plot_radius = user_input_bool("Do you want to plot the radius?")
+    plot_velocity = user_input_bool("Do you want to plot the radius first derivative?")
     plot_spec = user_input_bool("Do you want to plot the spectrum?")
 
     phase = get_phase(parsed)
-    fig = plot_rad_spec(plot_radius, plot_spec)(parsed, phase)
+    fig = plot_rad_spec(plot_radius, plot_velocity, plot_spec)(parsed, phase)
 
     view_const = 2.3
     fig.legend()
     fig.set_size_inches(view_const * 0.85 *
                         (8.25 - 0.875 * 2), view_const * 2.5)
     fig.tight_layout()
+    fig.canvas.manager.set_window_title(str(file))
     plt.show(block=True)
 
 
