@@ -48,6 +48,8 @@ class Signals:
 
 class ChildSignals:
     """Dataclass for child processes. Use only send_bytes."""
+    type = bytes  # Used for type hinting
+
     action_cont = cont()[0]
     action_request_requeue = REQUEUE
     action_hup = HUP[0]
