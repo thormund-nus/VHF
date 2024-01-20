@@ -19,6 +19,7 @@ from multiprocessing.connection import Connection
 import os
 from time import sleep
 from typing import Callable, ClassVar, Deque, List
+from VHF.multiprocess.signals import Signals
 
 __all__ = [
     "IdentifiedProcess",
@@ -67,6 +68,9 @@ class IdentifiedProcess:
     _to_close_delay: ClassVar[timedelta]
     _count: ClassVar[int] = 0
     _process_name: ClassVar[str] = "Process"
+
+    def __str__(self):
+        return f"{self._process_name}{self._id}: PID={self._pid}"
 
     @classmethod
     def set_close_delay(cls, delay: timedelta):
@@ -142,10 +146,10 @@ class IdentifiedProcess:
         """Determine if the identified process is alive."""
         if self.process._closed:  # This is with reference to Process._check_closed() method
             result = False
-            self.logger.debug("self._process was already closed")
+            self.logger.debug("%s: self._process was already closed", self)
         else:
             result = self._process.is_alive()
-            self.logger.debug("self.is_alive yields: %s", result)
+            self.logger.debug("%s: self.is_alive yields: %s", self, result)
         return result
 
     def _join_proc(self):

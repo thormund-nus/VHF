@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+log_cli = "True"
+log_cli_level = "DEBUG"
+log_cli_format = "%(levelname)s\t%(asctime)s.%(msecs)03d\t%(name)12s\t%(processName)s:%(lineno)d\t%(message)s"
+log_cli_date_format = "%H:%M:%S"

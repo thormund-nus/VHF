@@ -9,6 +9,7 @@ from collections import deque
 from inspect import getmembers, isroutine
 import logging
 from logging import Logger, getLogger
+from logging.handlers import QueueHandler
 from multiprocessing import Process, Pipe, connection
 from multiprocessing.connection import Connection
 from queue import Empty, Queue
@@ -36,10 +37,12 @@ class VHFPool:
     def __init__(
         self,
         fail_forward: Mapping[ChildSignals.type, bool] = {
-            ChildSignals().too_many_attempts: True
+            ChildSignals().too_many_attempts: True,
+            # b"unknown case": True,
         },
         count: int = 3,
         target: Callable = None,
+        logging_queue: Queue = None,
         *args, **kwargs
     ) -> None:
         """Prepare VHFPool instance.
@@ -59,8 +62,7 @@ class VHFPool:
         *args, **kwargs:
             Passed onto target.
         """
-        self.logger: Logger = getLogger(__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self._init_logger(logging_queue)
         self._closed = False  # Used in instance cleanup method: close()
         self.fail_forward = fail_forward
 
@@ -96,6 +98,14 @@ class VHFPool:
         self.rq_thread_active = False
         self.rq_thread_queue = Queue()
         self.start_requeue_worker()
+
+    def _init_logger(self, logging_queue):
+        root_logger = getLogger()
+        qh = QueueHandler(logging_queue)
+        if not root_logger.handlers:
+            root_logger.addHandler(qh)
+        self.logger: Logger = getLogger("VHFPool")
+        self.logger.setLevel(logging.DEBUG)
 
     def _init_checks_fail_forward(self):
         """Check that what is needed satisfies to criteria.
@@ -152,6 +162,13 @@ class VHFPool:
                     result["fail_forward"] = []
                 result["fail_forward"].append(k)
 
+        # Corruption of data on Pipe.
+        # if b"unknown case" not in self.fail_forward:
+        #     self.fail_forward[b"unknown case"] = False
+        #     self.logger.warning(
+        #         "b'unknown warning' was not found in fail_forward, appended to False"
+        #     )
+
         return result
 
     # Section: Child management
@@ -203,7 +220,7 @@ class VHFPool:
             self._dead_children.remove(child)
             child.close()
         elif was_zombie and not result:
-            pass
+            return
 
         self.logger.warning(
             "_close_child invoked on %s found in neither self._children not "
@@ -295,6 +312,7 @@ class VHFPool:
                         data = x.connection.recv_bytes()
                         if data == self.c_sig.action_request_requeue:
                             self.requeue_child(x)
+                            self.logger.debug("Requeued %s", x)
                         else:
                             # Msg from child has already been consumed!
                             self.logger.warn(
@@ -397,9 +415,22 @@ class VHFPool:
             if not self.fail_forward[data]:
                 # fail_forward found to be false, closing all.
                 self._close_all()
+            else:
+                self._close_live_child_with_replacement(child)
             return False
         else:
-            self.logger.warning("Unknown signal from active child.")
+            self.logger.warning(
+                "Unknown signal from active child = %s.",
+                child
+            )
+            self.logger.warning("data = %s", data)
+            # if not self.fail_forward[b'unknown case']:
+            #     self._close_all()
+            # else:
+            if True:  # TODO
+                self._close_child(child)  # Child is known to be dead here
+                self._create_child(self.target, *self.target_args,
+                                   **self.target_kwargs)
             return False
 
     # Section: Personal cleanup
@@ -414,6 +445,8 @@ class VHFPool:
 
         # cleanup spawned thread
         if self.rq_thread_active:
+            self.logger.info("Putting HUP to requeuer thread in VHFPool.")
+            sleep(0.05)
             self.rq_thread_queue.put(HUP)
         self.rq_thread.join()  # Doc: A thread can joined many times
         self.logger.debug("self.rq_thread joined.")

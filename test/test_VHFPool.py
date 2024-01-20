@@ -1,10 +1,14 @@
+from abc import abstractmethod
 from datetime import timedelta
 from functools import cache
 from inspect import getmembers, isroutine
 import logging
 from logging import getLogger, Logger
+from threading import Thread
 from time import sleep
+import multiprocessing
 from multiprocessing import Queue
+from multiprocessing.connection import Connection
 from pathlib import Path
 import pytest
 import sys
@@ -12,14 +16,60 @@ from typing import Callable, Mapping
 module_path = str(Path(__file__).parents[1])
 if module_path not in sys.path:
     sys.path.append(module_path)
-from test_IdentifiedProcess import GenericChild  # noqa
 from VHF.multiprocess.root import IdentifiedProcess  # noqa
-from VHF.multiprocess.signals import Signals, ChildSignals  # noqa
+from VHF.multiprocess.signals import HUP, Signals, ChildSignals  # noqa
 from VHF.multiprocess.vhf import genericVHF  # noqa
 from VHF.multiprocess.vhf_pool import VHFPool  # noqa
 
+# multiprocessing.set_start_method('spawn')
 
-class Regular(GenericChild):
+
+def log_listener(q):
+    while True:
+        record = q.get()
+        if record == HUP:
+            logger = getLogger()
+            logger.info("Recieved HUP")
+            break
+        logger = logging.getLogger(record.name)
+        logger.handle(record)
+    return
+
+
+class GenericChildMultiProcess():
+    def __init__(self, comm: Connection):
+        self.init_log()
+        self.comm: Connection = comm
+        self.pid: int | None = multiprocessing.current_process().pid
+        self.logger.debug("Obtained PID %s.", self.pid)
+        if self.pid is None:
+            # This really should not be occuring!
+            self.logger.error("Failed to obtain a PID for child process.")
+            self.comm.send_bytes(b'1')
+            self.exit_code = 1
+            self.close()
+        self.comm.send((0, self.pid))
+        self.main_func()
+
+    def init_log(self):
+        self.logger = getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)
+
+    def close(self):
+        """Close up class that pulls data from VHF."""
+        self.logger.info("Initiating Closing...")
+        # Does q from parameters of __init__ require to be closed too?
+        self.comm.close()
+        self.logger.info("Closed child VHF process end of Pipe().")
+        self.logger.info("Closed with exit_code %s", -self.exit_code)
+        sys.exit(self.exit_code)
+
+    @abstractmethod
+    def main_func(self):
+        raise NotImplementedError
+
+
+class Regular(GenericChildMultiProcess):
     def main_func(self):
         c_sig = ChildSignals()
         sig = Signals()
@@ -31,18 +81,18 @@ class Regular(GenericChild):
                     msg = data[1]
                     self.logger.info(
                         "Child is doing busy work with msg = %s", msg)
-                    sleep(0.4)
+                    sleep(1.4)
                     # signal to let next child proceeed
                     self.comm.send_bytes(c_sig.action_cont)
                     # signal to request requeue
-                    sleep(0.2)
+                    sleep(0.6)
                     self.comm.send_bytes(c_sig.action_request_requeue)
                 case sig.action_hup:
                     break
         self.close()
 
 
-class BadA(GenericChild):
+class BadA(GenericChildMultiProcess):
     """Fails to release to next child."""
 
     def main_func(self):
@@ -62,7 +112,7 @@ class BadA(GenericChild):
                     break
 
 
-class BadB(GenericChild):
+class BadB(GenericChildMultiProcess):
     """Fails to requeue."""
 
     def main_func(self):
@@ -178,23 +228,52 @@ def test_VHFPool_regular():
     behave to requirement."""
     # Specify IdentifiedProcess classvar
     IdentifiedProcess.set_process_name("Regular")
-    IdentifiedProcess.set_close_delay(timedelta(0.4))
+    IdentifiedProcess.set_close_delay(timedelta(1.4))
+    # Setup logging
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    streamhandler = logging.StreamHandler(sys.stdout)
+    streamhandler.setLevel(logging.DEBUG)
+    fmtter = logging.Formatter(
+        # the current datefmt str discards date information
+        '[%(asctime)s%(msecs)d] (%(levelname)s)\t[%(processName)s] %(name)s: \t %(message)s', datefmt='%H:%M:%S:'
+    )
+    fmtter.default_msec_format = "%s.03d"
+    streamhandler.setFormatter(fmtter)
+    # streamhandler.addFilter(no_matplot)
+    logger.addHandler(streamhandler)
+    logger_q = Queue()
+    lp = Thread(  # listening process
+        target=log_listener,
+        args=(logger_q,),
+    )
+    lp.start()
+
     # Define properties necessary for init of VHFPool instance
     c_sig = ChildSignals()
     fail_forward = {
         c_sig.action_generic_error: True,
         c_sig.too_many_attempts: False,
+        # b'unknown case': True,
     }
-    logger_q = Queue
     pool = VHFPool(
         fail_forward,
         3,
         Regular,
         logger_q,
+        # logger_q,
     )
     for _ in range(9):
+        logger.info("About to start next iteration")
         pool.continue_child("WORK")
-        sleep(0.5)
+        logger.info("Iteration completed.")
 
+    sleep(2)
     pool._close_all()
+    logger.info("Root sees that pool has closed all children threads.")
     pool.close()
+    logger.info("Root sees that pool is closed.")
+    sleep(0.1)
+    logger.info("HUP to listener thread")
+    logger_q.put(HUP)
+    lp.join()
