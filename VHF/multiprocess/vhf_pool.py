@@ -93,8 +93,10 @@ class VHFPool:
         self.queue: Deque = deque([x for x in self._children])
         # Child that is to be used for next sampling instance.
         self._current_child: IdentifiedProcess = self.queue.popleft()
+        self._previous_current_child: IdentifiedProcess = None
 
         # Requeue worker
+        # sleep(0.5)
         self.rq_thread_active = False
         self.rq_thread_queue = Queue()
         self.start_requeue_worker()
@@ -186,7 +188,11 @@ class VHFPool:
             kwargs=kwargs,
         )
         # IdentifiedProcess wrapper starts child process.
-        ip = IdentifiedProcess(job, sink, src)
+        ip = IdentifiedProcess(job, sink)
+        # https://stackoverflow.com/a/74742887
+        # https://stackoverflow.com/a/8595331
+        # https://stackoverflow.com/q/71532034
+        src.close()  # Closes child end on parent process, due to fork.
         self._children.append(ip)
         # Placing live child into queue of available children is for either
         # init or requeue worker to do
@@ -248,9 +254,15 @@ class VHFPool:
                 self.target, *self.target_args, **self.target_kwargs
             )
 
-    def _children_to_requeue(self) -> list[IdentifiedProcess]:
+    def _candidates_of_children_to_requeue(self) -> list[IdentifiedProcess]:
         """List of children who might have signalled ready to requeue."""
-        return list(set(self._children) - set([self._current_child,]) - set(self._dead_children))
+        result = list(set(self._children) -
+                      set([self._current_child, self._previous_current_child]) -
+                      set(self._dead_children))
+        # if len(result) > 0:
+        #     fmt = list(map(str, result))
+        #     self.logger.debug("Candidates to requeue: %s", fmt)
+        return result
 
     def requeue_child(self, ip: IdentifiedProcess):
         """Adds child process back into available queue."""
@@ -306,7 +318,7 @@ class VHFPool:
             #     # recover the corresponding child process from its .connection attribute
 
             # Trying to requeue live child
-            for x in self._children_to_requeue():
+            for x in self._candidates_of_children_to_requeue()[:]:
                 try:
                     if x.connection.poll(timeout=0.01):
                         data = x.connection.recv_bytes()
@@ -370,10 +382,10 @@ class VHFPool:
         self.logger.info(
             "Sending msg = `%s` to child with PID `%s`", msg, self._current_child.pid)
         self._current_child.connection.send(msg)
-        result = self._current_child
+        self._previous_current_child = self._current_child
         # Get a new child
         self._current_child = self.queue.popleft()
-        return result
+        return self._previous_current_child
 
     # @disable_warn_if_auto
     # def continue_child_nonblock(self, *args) -> IdentifiedProcess:

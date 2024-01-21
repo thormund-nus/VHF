@@ -87,13 +87,16 @@ class IdentifiedProcess:
         """Increment instance counter."""
         type(self)._count += 1
 
-    def __init__(self, process: Process, connection: Connection,
-                 child_connection: Connection, init_timeout: float = 2.):
+    def __init__(
+        self,
+        process: Process,
+        connection: Connection,
+        init_timeout: float = 2.
+    ):
         self._createLogger()
         self._process: Process = process
         self._process.name = type(self)._process_name + str(self._id)
         self._connection: Connection = connection
-        self._childconnection: Connection = child_connection
         self._pid: int = None
         self._to_close: bool = False
         self._to_close_last_time: datetime
@@ -195,8 +198,6 @@ class IdentifiedProcess:
                     self.logger.warning("Attempting to forcefully kill.")
                     # os.system(f"kill -9 {self._pid}")
                     self._process.kill()
-                    # https://stackoverflow.com/q/71532034
-                    # self._childconnection.close()  # Is this enough?
                     sleep(0.2)
                     self._join_proc()
                     return self._closed

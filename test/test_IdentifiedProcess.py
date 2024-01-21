@@ -85,7 +85,7 @@ def test_IdentifiedProcess_classvariable():
     sink, src = Pipe()
     instance = IdentifiedProcess(
         process=Process(target=GenericChild, args=(src, q)),
-        connection=sink, child_connection=src,
+        connection=sink,
     )
     assert type(instance)._to_close_delay == IdentifiedProcess._to_close_delay \
         and type(instance)._to_close_delay
@@ -113,7 +113,6 @@ def test_unresponsive_child_process():
             args=(src, q),
         ),
         sink,
-        src
     )
     logging.info("badproc.pid = %d", badproc.pid)
     for _ in range(6):
@@ -141,7 +140,6 @@ def test_regular_child_process():
             args=(src, q),
         ),
         sink,
-        src
     )
     logging.info("child.pid = %d", child.pid)
     child.connection.send(cont('1'))
@@ -167,7 +165,6 @@ def test_logger_freeup():
                     args=(src, q),
                 ),
                 sink,
-                src
             )
         )
     logger.info("Created children")
@@ -191,5 +188,7 @@ def test_logger_freeup():
     #     filter(lambda x: "05" in str(logging.getLogger(
     #         x)), logging.root.manager.loggerDict))
     # )
-    assert not any(filter(lambda x: "09" in str(logging.getLogger(
-        x)), logging.root.manager.loggerDict))
+    assert not any(filter(
+        lambda x: "09" in str(logging.getLogger(x)),
+        logging.root.manager.loggerDict
+    ))
