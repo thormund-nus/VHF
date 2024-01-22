@@ -4,6 +4,7 @@ from functools import cache
 from inspect import getmembers, isroutine
 import logging
 from logging import getLogger, Logger
+from logging.handlers import QueueHandler
 from threading import Thread
 from time import sleep
 import multiprocessing
@@ -24,12 +25,13 @@ from VHF.multiprocess.vhf_pool import VHFPool  # noqa
 # multiprocessing.set_start_method('spawn')
 
 
-def log_listener(q):
+def log_listener(q: Queue):
+    """Record logs across multiple processes."""
     while True:
         record = q.get()
         if record == HUP:
             logger = getLogger()
-            logger.info("Recieved HUP")
+            logger.info("[Listener] Recieved HUP")
             break
         logger = logging.getLogger(record.name)
         logger.handle(record)
@@ -37,8 +39,11 @@ def log_listener(q):
 
 
 class GenericChildMultiProcess():
-    def __init__(self, comm: Connection):
-        self.init_log()
+    """Generic Child Process that is not threaded for this unit test file."""
+
+    def __init__(self, comm: Connection, q: Queue):
+        """Initializer for all children in this unit test file."""
+        self.init_log(q)
         self.comm: Connection = comm
         self.pid: int | None = multiprocessing.current_process().pid
         self.logger.debug("Obtained PID %s.", self.pid)
@@ -51,7 +56,12 @@ class GenericChildMultiProcess():
         self.comm.send((0, self.pid))
         self.main_func()
 
-    def init_log(self):
+    def init_log(self, q: Queue):
+        """Create logger."""
+        # https://docs.python.org/3/howto/logging-cookbook.html#logging-to-a-single-file-from-multiple-processes
+        rootLogger = getLogger()
+        if not rootLogger.handlers:
+            rootLogger.addHandler(QueueHandler(q))
         self.logger = getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
 
@@ -71,6 +81,7 @@ class GenericChildMultiProcess():
 
 class Regular(GenericChildMultiProcess):
     def main_func(self):
+        self.exit_code = 0
         c_sig = ChildSignals()
         sig = Signals()
 
@@ -242,7 +253,7 @@ def test_VHFPool_regular():
     streamhandler.setFormatter(fmtter)
     # streamhandler.addFilter(no_matplot)
     logger.addHandler(streamhandler)
-    logger_q = Queue()
+    logger_q: Queue = Queue()
     lp = Thread(  # listening process
         target=log_listener,
         args=(logger_q,),
@@ -261,7 +272,6 @@ def test_VHFPool_regular():
         3,
         Regular,
         logger_q,
-        # logger_q,
     )
     for _ in range(9):
         logger.info("About to start next iteration")

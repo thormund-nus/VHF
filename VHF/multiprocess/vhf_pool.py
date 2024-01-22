@@ -10,9 +10,9 @@ from inspect import getmembers, isroutine
 import logging
 from logging import Logger, getLogger
 from logging.handlers import QueueHandler
-from multiprocessing import Process, Pipe, connection
+from multiprocessing import Process, Pipe, Queue, connection
 from multiprocessing.connection import Connection
-from queue import Empty, Queue
+from queue import Empty
 from threading import Thread
 from time import sleep
 from typing import Callable, Deque, Mapping
@@ -38,7 +38,6 @@ class VHFPool:
         self,
         fail_forward: Mapping[ChildSignals.type, bool] = {
             ChildSignals().too_many_attempts: True,
-            # b"unknown case": True,
         },
         count: int = 3,
         target: Callable = None,
@@ -55,12 +54,21 @@ class VHFPool:
             'continue_child' function in charge of awaiting the process that
             sampling the VHF board to determine if to stop abruptly or to "fail
             forward".
+        count: int
+            Maximum number of children that exists simultaneously.
         target: Callable
             Concrete implementation of VHF.multiprocessing.genericVHF is
             expected here; one available instance for sampling from VHF board
             will thus be automatically provided by the Pool.
+        logging_queue: multiprocessing.Queue
+            For target to log to in a multiprocess-safe manner.
         *args, **kwargs:
-            Passed onto target.
+            Passed onto target. Note that the first 2 arguments of Target
+            should consume multiprocessing.connection.Connection and
+            multiprocessing.Queue in the specified order, for recieving
+            messages from this VHFPool object, and for the IdentifiedProcess's
+            Target to log to.
+            Refer to VHF.multiprocess.vhf.genericVHF for clarification.
         """
         self._init_logger(logging_queue)
         self._closed = False  # Used in instance cleanup method: close()
@@ -71,7 +79,7 @@ class VHFPool:
             return
         # Process to be spawned and its arguments
         self.target: Callable = target
-        self.target_args = args
+        self.target_args = (logging_queue, *args)
         self.target_kwargs = kwargs
 
         # Signals being returned from spawned process being checked
@@ -102,10 +110,12 @@ class VHFPool:
         self.start_requeue_worker()
 
     def _init_logger(self, logging_queue):
-        root_logger = getLogger()
-        qh = QueueHandler(logging_queue)
-        if not root_logger.handlers:
-            root_logger.addHandler(qh)
+        """Create Logger for VHFPool."""
+        # There is no need for same thread to have queue handled.
+        # root_logger = getLogger()
+        # qh = QueueHandler(logging_queue)
+        # if not root_logger.handlers:
+        #     root_logger.addHandler(qh)
         self.logger: Logger = getLogger("VHFPool")
         self.logger.setLevel(logging.DEBUG)
 
@@ -121,7 +131,8 @@ class VHFPool:
         self.logger.debug("init_check start.")
         result = {}
 
-        # Signals from child_signal that we require be the key in self.fail_forward
+        # Signals from child_signal that we require be the key in
+        # self.fail_forward
         attributes = getmembers(ChildSignals, lambda a: not (isroutine(a)))
         ms = [a for a in attributes if not (
             a[0].startswith('__') and a[0].endswith('__'))]
@@ -136,7 +147,8 @@ class VHFPool:
         for m in ms:
             if m[1] not in self.fail_forward:
                 self.logger.warning(
-                    "Testing fail_forward \\supseteq ChildSignals, ChildSignals.%s not found in fail_forward.",
+                    "Testing fail_forward \\supseteq ChildSignals, "
+                    "ChildSignals.%s not found in fail_forward.",
                     m
                 )
                 if "ChildSignals" not in result:
@@ -151,25 +163,19 @@ class VHFPool:
                         result["fail_forward_bool"] = []
                     result["fail_forward_bool"].append(m)
 
-        # Conversely, we require that all fail_forward keys are within ChildSignals
-        # map will get consumed after yielding
+        # Conversely, we require that all fail_forward keys are within
+        # ChildSignals map will get consumed after yielding
         vs = list(map(lambda x: x[1], ms))
         for k in self.fail_forward:
             if k not in vs:
                 self.logger.warning(
-                    "Testing fail_forward \\subseteq ChildSignals, fail_forward had key = %s not found in ChildSignals.",
+                    "Testing fail_forward \\subseteq ChildSignals, "
+                    "fail_forward had key = %s not found in ChildSignals.",
                     k
                 )
                 if "fail_forward" not in result:
                     result["fail_forward"] = []
                 result["fail_forward"].append(k)
-
-        # Corruption of data on Pipe.
-        # if b"unknown case" not in self.fail_forward:
-        #     self.fail_forward[b"unknown case"] = False
-        #     self.logger.warning(
-        #         "b'unknown warning' was not found in fail_forward, appended to False"
-        #     )
 
         return result
 
@@ -177,8 +183,8 @@ class VHFPool:
     def _create_child(self, target: Callable, *args, **kwargs):
         """Update master list of newly created child.
 
-        self._children neeeds to be updated with a fully live child in this stage,
-        with all details filled.
+        self._children neeeds to be updated with a fully live child in this
+        stage, with all details filled.
         """
         sink, src = Pipe()
         job: Process = Process(
@@ -287,7 +293,9 @@ class VHFPool:
         # Check for solo instance
         if self.rq_thread_active:
             self.logger.warning(
-                "An active requeue worker has already been found! Terminating...")
+                "An active requeue worker has already been found! "
+                "Terminating..."
+            )
             return
         self.rq_thread_active = True
 
@@ -315,7 +323,8 @@ class VHFPool:
             #     timeout=0.01
             # )
             # for x in joinable:
-            #     # recover the corresponding child process from its .connection attribute
+            #     # recover the corresponding child process from its
+            #     # .connection attribute
 
             # Trying to requeue live child
             for x in self._candidates_of_children_to_requeue()[:]:
@@ -351,8 +360,6 @@ class VHFPool:
 
             # Add some delay before next batch of requeue attempts
             sleep(0.2)
-
-        self.rq_thread_queue.task_done()
 
     def _close_all(self):
         """Terminates all children."""
@@ -436,9 +443,6 @@ class VHFPool:
                 child
             )
             self.logger.warning("data = %s", data)
-            # if not self.fail_forward[b'unknown case']:
-            #     self._close_all()
-            # else:
             if True:  # TODO
                 self._close_child(child)  # Child is known to be dead here
                 self._create_child(self.target, *self.target_args,
@@ -462,8 +466,6 @@ class VHFPool:
             self.rq_thread_queue.put(HUP)
         self.rq_thread.join()  # Doc: A thread can joined many times
         self.logger.debug("self.rq_thread joined.")
-        self.rq_thread_queue.join()  # Joining a queue requires task_done
-        self.logger.debug("self.rq_thread_queue joined.")
 
         # cleanup children
         self._close_all()

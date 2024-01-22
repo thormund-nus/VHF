@@ -63,6 +63,14 @@ class IdentifiedProcess:
     close: None
         Close IdentifiedProcess. Cleanups generated logger.
 
+    Properties
+    ----------
+    process: multiprocessing.Process
+        Process object which this IdentifiedProcess object is a wrapper of.
+    connection: multiprocessing.connection.Connection
+        Parent end of Pipe object, for sending messages to process..
+    PID: int
+        PID of process.
     """
 
     _to_close_delay: ClassVar[timedelta]
