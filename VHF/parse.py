@@ -1,4 +1,3 @@
-
 from datetime import datetime
 from datetime import timedelta
 from functools import cached_property
@@ -6,6 +5,171 @@ import logging
 import numpy as np
 import os
 from _io import BufferedRandom
+
+__all__ = [
+    "VHFparser",
+]
+
+
+class TraceTimer:
+    """Timing and index management for VHF parser."""
+
+    def __init__(
+        self,
+        header_offset: int,
+        trace_start: datetime,
+        trace_freq: float,
+        trace_size: int
+    ):
+        """Populate timing start/end of trace within VHF trace file.
+
+        Init arguments
+        -----
+        header_offset: int
+            By viewing the entire binary file as being a sequence of words,
+            where a word is some specified number of bytes, the header_offset
+            is the number of bytes relative to the start of the file to skip to
+            get to the trace.
+        trace_start: datetime.datetime
+            This is the absolute time associated with trace[0].
+            Unpacking trace[0] gives (I, Q, M).
+        trace_freq: float
+            This is the frequency in Hertz associated to trace[1] - trace[0].
+        trace_size:
+            By viewing the entire binary file as being a sequence of words,
+            where a word is some specified number of bytes, the trace_size is
+            the value of n for
+                file = [header[0] ... header[j] trace[0] ... trace[n-1] ]
+            which is the number of words in trace.
+        """
+        self.logger = logging.getLogger("vhfparser")
+        self.header_offset = header_offset
+        self.trace_start = trace_start
+        self.trace_duration = timedelta(seconds=trace_size/trace_freq)
+        self.trace_end = self.trace_start + self.trace_duration
+        self.trace_freq = trace_freq
+        self.plot_start = self.trace_start
+        self.plot_duration = self.trace_duration
+        self.plot_end = self.trace_end
+
+    def update_plot_timing(self, **kwargs) -> bool:
+        """Update TraceTimer to select trace to specified interval.
+
+        Output
+        ------
+        bool: True if plotting region has been changed.
+
+        Parameters (**kwargs)
+        ----------
+        start: Optional[datetime | timedelta]
+            If start is absolute, plot_start will be set to
+            min(max(trace_start, start), trace_end).
+            If start is relative, plot_start will be set to
+            min(trace_start + start, trace_end).
+            If start is not specified, prior decided start will be used.
+        duration: Optional[timedelta]
+            Duration specifies end relative to plot start. Will still be
+            bounded to within trace_end. This makes the strong assumption that
+            the user wants the trace to have the duration be duration relative
+            to the specified start, prior to this method having coerced start
+            to be bound to the trace's start and end.
+        end: Optional[datetime]
+            Specify plot end. Will still be bounded to trace end.
+        """
+        # Populate from kwargs
+        start: Optional[datetime | timedelta] = kwargs.get(
+            "start") if "start" in kwargs else None
+        duration: Optional[timedelta] = kwargs.get(
+            "duration") if "duration" in kwargs else None
+        end: Optional[datetime] = kwargs.get(
+            "end") if "end" in kwargs else None
+
+        # Guard clause
+        if duration is not None and end is not None:
+            self.logger.warning(
+                "Both duration and end were specified to update_plot_timing!")
+            raise ValueError(
+                "Both duration and end were specified to update_plot_timing!")
+        if start is None and duration is None and end is None:
+            self.logger.warning("Nothing passed into update_plot_timing.")
+            return False
+
+        start_changed: bool = False
+        end_changed: bool = False
+
+        # Time zone coercion
+        if start is not None and isinstance(start, datetime):
+            if self._datetime_aware(start) ^ self._datetime_aware(self.trace_start):
+                start, _ = self._coerce_dt_aware(start, self.trace_start)
+        if end is not None:
+            if self._datetime_aware(end) ^ self._datetime_aware(self.trace_end):
+                end, _ = self._coerce_dt_aware(end, self.trace_end)
+
+        user_start = start
+
+        # Change user's wanted start time to absolute time.
+        if start is not None:
+            if isinstance(start, timedelta):
+                start: datetime = self.trace_start + start
+            # Coerce start to be within trace
+            if start > self.trace_end or start < self.trace_start:
+                self.logger.warning(
+                    "Specified plot start is out of bounds. Coercing...")
+                start = min(max(self.trace_start, start), self.trace_end)
+            start_changed = start != self.plot_start
+            self.plot_start = start
+
+        # If duration is used, we calcuate the desired end time before seeing
+        # if it needs to be coerced to within the bounds of the trace
+        if duration is not None:
+            # Get end to be absolute
+            if isinstance(user_start, timedelta):
+                end: datetime = self.trace_start + user_start + duration
+            elif isinstance(user_start, datetime):
+                end: datetime = user_start + duration
+            else:
+                raise ValueError
+        elif end is not None:
+            # By this point, variable end is datetime object.
+            pass
+
+        # Coerce end to be within trace
+        if end is not None:
+            if end > self.trace_end or end < self.trace_start:
+                self.logger.warning(
+                    "Specified plot end is out of bounds.")
+                end = max(min(self.trace_end, end), self.trace_start)
+            end_changed = end != self.plot_end
+            self.plot_end = end
+
+        return start_changed or end_changed
+
+    def _datetime_aware(self, dt: datetime) -> bool:
+        """Determine if a datetime object is aware, or otherwise (naive)."""
+        # doc: https://docs.python.org/3/library/datetime.html#determining-if-an-object-is-aware-or-naive # noqa: E501
+        # Resorts to False and undefined -> False
+        return dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) is not None
+
+    def _coerce_dt_aware(self, dt1: datetime,
+                         dt2: datetime) -> tuple[datetime, datetime]:
+        """Coerces one datetime object to be aware like the other object.
+
+        Datetime objects are not orderable if exclusively one is 'aware'.
+        The naive object is forced to inherit the aware datetime object tzinfo.
+        """
+        if not (self._datetime_aware(dt1) ^ self._datetime_aware(dt2)):
+            # No coercion required
+            return dt1, dt2
+
+        # determine which to convert, and inherit timezone from the other
+        if self._datetime_aware(dt1):
+            dt2 = dt2.astimezone(dt1.tzinfo)
+        elif self._datetime_aware(dt2):
+            dt1 = dt1.astimezone(dt2.tzinfo)
+        else:
+            # Logical error
+            raise NotImplementedError
+        return dt1, dt2
 
 
 class VHFparser:
