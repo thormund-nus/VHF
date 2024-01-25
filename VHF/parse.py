@@ -2,6 +2,7 @@ from datetime import datetime
 from datetime import timedelta
 from functools import cached_property
 import logging
+from typing import Optional
 import numpy as np
 import os
 from _io import BufferedRandom
@@ -16,7 +17,6 @@ class TraceTimer:
 
     def __init__(
         self,
-        header_offset: int,
         trace_start: datetime,
         trace_freq: float,
         trace_size: int
@@ -25,11 +25,6 @@ class TraceTimer:
 
         Init arguments
         -----
-        header_offset: int
-            By viewing the entire binary file as being a sequence of words,
-            where a word is some specified number of bytes, the header_offset
-            is the number of bytes relative to the start of the file to skip to
-            get to the trace.
         trace_start: datetime.datetime
             This is the absolute time associated with trace[0].
             Unpacking trace[0] gives (I, Q, M).
@@ -43,13 +38,12 @@ class TraceTimer:
             which is the number of words in trace.
         """
         self.logger = logging.getLogger("vhfparser")
-        self.header_offset = header_offset
         self.trace_start = trace_start
         self.trace_duration = timedelta(seconds=trace_size/trace_freq)
+        self.sample_interval = timedelta(seconds=1/trace_freq)
         self.trace_end = self.trace_start + self.trace_duration
         self.trace_freq = trace_freq
         self.plot_start = self.trace_start
-        self.plot_duration = self.trace_duration
         self.plot_end = self.trace_end
 
     def update_plot_timing(self, **kwargs) -> bool:
@@ -119,7 +113,7 @@ class TraceTimer:
             start_changed = start != self.plot_start
             self.plot_start = start
 
-        # If duration is used, we calcuate the desired end time before seeing
+        # If duration is used, we calculate the desired end time before seeing
         # if it needs to be coerced to within the bounds of the trace
         if duration is not None:
             # Get end to be absolute
@@ -170,6 +164,23 @@ class TraceTimer:
             # Logical error
             raise NotImplementedError
         return dt1, dt2
+
+    @property
+    def start_idx(self) -> int:
+        """Start index relative to trace[0] for plot_start."""
+        delta = self.plot_start - self.trace_start
+        return int(delta/self.sample_interval)
+
+    @property
+    def end_idx(self) -> int:
+        """End index relative to file head for plot_start."""
+        return self.start_idx + self.duration_idx
+
+    @property
+    def duration_idx(self) -> int:
+        """Duration index specifying number of bytes to read."""
+        delta = self.plot_end - self.plot_start
+        return int(delta/self.sample_interval)
 
 
 class VHFparser:

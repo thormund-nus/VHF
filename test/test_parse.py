@@ -15,6 +15,8 @@ def test_TraceTimer_regular():
     timings = TraceTimer(0, example_start, example_freq, example_size)
     expected = timedelta(hours=2)
     assert timings.trace_end - example_start == expected
+    assert timings.start_idx == 0
+    assert timings.end_idx == 2 * 60 * 60 * 40000
 
     rel_start = timedelta(seconds=70)
     change_statues = timings.update_plot_timing(start=rel_start)
@@ -23,6 +25,8 @@ def test_TraceTimer_regular():
     assert timings.plot_end - timings.plot_start == expected_duration
     assert timings.plot_start == timings.trace_start + rel_start
     assert timings.plot_end == timings.trace_end
+    assert timings.start_idx == 70 * example_freq
+    assert timings.end_idx == 2 * 60 * 60 * example_freq
 
     new_end_rel_to_trc_start = timedelta(hours=1, seconds=12)
     new_end = example_start + new_end_rel_to_trc_start
@@ -40,6 +44,7 @@ def test_TraceTimer_regular():
     assert change_statues
     assert timings.plot_start == abs_start
     assert timings.plot_end - timings.plot_start == dur
+    assert timings.duration_idx == int(dur/timedelta(seconds=1/example_freq))
 
     change_statues = timings.update_plot_timing(start=abs_start, duration=dur)
     assert not change_statues
@@ -51,7 +56,6 @@ def test_TraceTimer_OOB():
     example_freq = 40000  # Hz
     example_size = example_freq * 2 * 60 * 60  # 2 hours
     timings = TraceTimer(0, example_start, example_freq, example_size)
-    expected = timedelta(hours=2)
 
     bad_start = example_start - timedelta(seconds=500)
     change_statues = timings.update_plot_timing(start=bad_start)
