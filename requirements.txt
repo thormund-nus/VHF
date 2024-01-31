@@ -1,3 +1,4 @@
+git+ssh://git@github.com/the-fibre-lab/python_drivers.git
 tabulate
 PyQt6
 PyGObject
