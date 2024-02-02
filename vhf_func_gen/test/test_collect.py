@@ -1,3 +1,4 @@
+"""With genericVHF now having been written, we should test that it works."""
 from configparser import ConfigParser, ExtendedInterpolation
 from datetime import datetime
 import logging

@@ -311,6 +311,8 @@ class VHFPool:
                     break
             except Empty:
                 pass
+            except BrokenPipeError:
+                return
             except Exception as exc:
                 self.logger.critical("exc = %s", exc, exc_info=True)
 
@@ -343,6 +345,11 @@ class VHFPool:
                 except BlockingIOError:
                     self.logger.debug(
                         "BlockingIOError occured while trying to poll from %s.", x)
+                except EOFError:
+                    self.logger.warning("EOF Error reached! Exiting!")
+                    # We leave the original thread to cleanup all children.
+                    self.rq_thread_active = False
+                    return
                 except Exception as exc:
                     self.logger.critical("exc = %s", exc, exc_info=True)
 

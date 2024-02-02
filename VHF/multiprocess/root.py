@@ -19,7 +19,7 @@ from multiprocessing.connection import Connection
 import os
 from time import sleep
 from typing import Callable, ClassVar, Deque, List
-from VHF.multiprocess.signals import Signals
+from VHF.multiprocess.signals import HUP, Signals
 
 __all__ = [
     "IdentifiedProcess",
@@ -183,12 +183,15 @@ class IdentifiedProcess:
         if not self._to_close:
             # First time trying to close child process.
             # close pipe on child end without gurantee
-            self._connection.send((b'2',))  # This is be specification
-            # close pipe from root(parent) end
-            self._connection.close()
-            self._to_close = True
-            self._to_close_last_time = datetime.now()
-            self._join_proc()
+            try:
+                self._connection.send(HUP)  # This is be specification
+                # close pipe from root(parent) end
+                self._connection.close()
+                self._to_close = True
+                self._to_close_last_time = datetime.now()
+                self._join_proc()
+            except BrokenPipeError:
+                self._closed = True  # ?
             return self._closed
         else:
             # Not first time trying to close.
