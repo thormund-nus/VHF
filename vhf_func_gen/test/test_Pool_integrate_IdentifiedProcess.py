@@ -1,6 +1,6 @@
 """With VHFPool now having been written, we should test that it works."""
 from configparser import ConfigParser, ExtendedInterpolation
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 from logging import getLogger, Logger, LogRecord
 from logging.handlers import QueueHandler
@@ -21,6 +21,7 @@ if module_path not in sys.path:
 # from ..run_vhf_dep.func_gen import SyncSingleChannelFuncGen
 from collect import FuncGenExpt  # noqa
 from func_gen import SyncSingleChannelFuncGen  # noqa
+from VHF.runner import VHFRunner  # noqa
 from VHF.multiprocess.root import IdentifiedProcess  # noqa
 from VHF.multiprocess.signals import ChildSignals, cont, HUP  # noqa
 from VHF.multiprocess.vhf_pool import VHFPool  # noqa
@@ -33,6 +34,7 @@ def no_matplot(record: LogRecord):
 class FuncGenExptRoot():
     def __init__(self, conf_path: Path, vhf_child: Callable, vhf_fail_forward: Mapping) -> None:
         self._closed: bool = False  # Determine if close() had been called
+        multiprocessing.set_start_method("spawn")
         self._init_logger()
         self._init_multiprocess_logging()
 
@@ -46,9 +48,17 @@ class FuncGenExptRoot():
         self.npz_lock = Lock()
         self.npz_database_path()
 
+        # Prepare function generator
+        self.func_gen = SyncSingleChannelFuncGen(
+            self.conf.get("Function Generator", "serial_no_full"),
+            channel='1', timeout=3.
+        )
+
         # Prepare VHFPool
         IdentifiedProcess.set_process_name("VHF")
-        IdentifiedProcess.set_close_delay(timedelta(seconds=18))
+        runner = VHFRunner(self.conf_path)
+        IdentifiedProcess.set_close_delay(
+            timedelta(seconds=runner.sample_time()))
         # TODO: read delay from conf
         self.vhf_target = vhf_child
         self.vhf_fail_forward = vhf_fail_forward
@@ -130,7 +140,8 @@ class FuncGenExptRoot():
 
     def _child_conf_check(self):
         """Perform the same checks as child class."""
-        return
+        assert self.conf.has_option("Multiprocess", "parse_ignore_left")
+        assert self.conf.has_option("Multiprocess", "max_attempts")
 
     def npz_database_path(self) -> Path:
         """If database is not found, create the numpy file instead."""
@@ -155,7 +166,7 @@ class FuncGenExptRoot():
         num_pts = 5  # For initial testing
         # num_pts = 1+int((max_p-min_p) /
         #                 self.conf.getfloat("Function Generator", "power_steps"))
-        vpp_axis = np.linspace(min_p, max_p, num=num_pts)
+        vpp_axis = np.sqrt(np.linspace(min_p, max_p, num=num_pts))
         size = (num_pts, self.conf.getint(
             "Function Generator", "number_samples_per_step"))
         np.savez(
@@ -186,28 +197,31 @@ class FuncGenExptRoot():
             npz_lock=self.npz_lock
         )
 
-    # def all_indices(self) -> Generator[Tuple[int, int], None, None]:
-    #     """Iterator object to yield from for passing to IdentifiedProcess[target]."""
-    #     # init: find first 0 in npz
-    #     max_i =  # TODO
-    #     max_j =  # TODO
+    def all_indices(self) -> Generator[Tuple[int, int], None, None]:
+        """Iterator object to yield from for passing to IdentifiedProcess[target]."""
+        # init: find first 0 in npz
+        npz_data = np.load(self.npz_path)
+        self.logger.debug("npz_path loaded, keys found: %s", npz_data.keys())
+        max_i, max_j = npz_data["mean"].shape
+        self.vpp_data = npz_data["vpp"]
 
-    #     i_start, j_start = first_zero()
+        i_start, j_start = first_zero_by_idx(npz_data["mean"])
+        self.logger.debug("i_start, j_start = %s, %s", i_start, j_start)
 
-    #     # yield relevant quantity
-    #     for i in range(i_start, max_i+1):
-    #         # prepared independent variable
-    #         voltage_to_set_amplitude
-    #         self.func_gen.set_amplitude(ampl_Vpp=)
+        # yield relevant quantity
+        for i in range(i_start, max_i):
+            # prepared independent variable
+            voltage_to_set_amplitude = npz_data["vpp"][i]
+            self.func_gen.set_amplitude(ampl_vpp=voltage_to_set_amplitude)
 
-    #         j_iter_start = j_start if i == i_start else 0
-    #         for j in range(j_iter_start, max_j+1):
-    #             # override_attr_arg is the mapping p for changing runner l, v pairs for filename
-    #             # analyse_parse_arg is any *args that is taken up by *args of analyse_parse arguments
-    #             # yield override_attr_arg, analyse_parse_arg
-    #             yield i, j
+            j_iter_start = j_start if i == i_start else 0
+            for j in range(j_iter_start, max_j):
+                # override_attr_arg is the mapping p for changing runner l, v pairs for filename
+                # analyse_parse_arg is any *args that is taken up by *args of analyse_parse arguments
+                # yield override_attr_arg, analyse_parse_arg
+                yield i, j
 
-    #     return
+        return
 
 
 def first_zero_by_idx(arr: np.ndarray) -> Tuple[int, int]:
@@ -221,6 +235,11 @@ def first_zero_by_idx(arr: np.ndarray) -> Tuple[int, int]:
 def main():
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
+    filehandler = logging.FileHandler(
+        filename=str(Path(__file__).parents[1].joinpath("Log")
+                     .joinpath(f"test_PoolIntegrated_{datetime.now().strftime('%Y%m%d_%H:%M:%S')}.log"))
+    )
+    filehandler.setLevel(logging.DEBUG)
     streamhandler = logging.StreamHandler(sys.stdout)
     streamhandler.setLevel(logging.DEBUG)
     fmtter = logging.Formatter(
@@ -231,12 +250,15 @@ def main():
     # fmtter.default_msec_format = "%s.%03d"
     streamhandler.setFormatter(fmtter)
     streamhandler.addFilter(no_matplot)
+    filehandler.setFormatter(fmtter)
+    filehandler.addFilter(no_matplot)
     logger.addHandler(streamhandler)
+    logger.addHandler(filehandler)
 
     # variable necessary to init vhf_child
     c_sig = ChildSignals()
     fail_forward = {
-        c_sig.action_generic_error: True,
+        c_sig.action_generic_error: False,
         c_sig.too_many_attempts: False,
     }
 
@@ -247,13 +269,14 @@ def main():
         vhf_child=FuncGenExpt,
         vhf_fail_forward=fail_forward,
     )
-    # # Rewrite Vpp in npz_database_path
-    # npz_path = expt.npz_database_path()
-    from time import sleep
     try:
-        sleep(9)
-        logger.info("Sleeping for 9s more...")
-        sleep(9)
+        for i, j in expt.all_indices():
+            vpp_selected = expt.vpp_data[i]
+            npz_loc = (i, j)
+            expt.vhf.continue_child(
+                {"vpp": f"{vpp_selected:7.4f}Vpp".strip(), "j": str(j)},
+                npz_loc
+            )
     except KeyboardInterrupt:
         logger.warning("KeyboardInterrupt obtained!")
         expt.close()

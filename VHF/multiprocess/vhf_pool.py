@@ -90,8 +90,8 @@ class VHFPool:
         self.count = count  # Target nuber of Jobs to create
         self._count = 0  # Number of Jobs created to far
         # Pool: List of children that should be alive/killed
-        self._children: list[IdentifiedProcess] = []
-        self._dead_children: list[IdentifiedProcess] = []
+        self._children: list[IdentifiedProcess] = list()
+        self._dead_children: list[IdentifiedProcess] = list()
         self._populate_children()
 
         # Pop from left to get an available VHF child process.
@@ -201,6 +201,7 @@ class VHFPool:
         # Placing live child into queue of available children is for either
         # init or requeue worker to do
         self.logger.debug("Appended %s to self._children.", ip)
+        self.logger.debug("%s associated to %s", ip, job)
 
     def _close_child(self, child: IdentifiedProcess):
         """Attempt to join child with cleanup.
@@ -224,11 +225,13 @@ class VHFPool:
             else:
                 # Cleanups wrapper of Process, i.e.: IdentifiedProcess
                 child.close()
+                return
 
         was_zombie = child in self._dead_children
         if was_zombie and result:
             self._dead_children.remove(child)
             child.close()
+            return
         elif was_zombie and not result:
             return
 
@@ -247,6 +250,14 @@ class VHFPool:
                 "zombie child. Replacement child not created."
             )
             return
+        self._create_child(self.target, *self.target_args,
+                           **self.target_kwargs)
+
+    def _close_dead_child_with_replacement(self, child: IdentifiedProcess):
+        """Attempt to close dead child, and spawn a replacement."""
+        self.logger.warning(
+            "Closing possibly dead child %s with replacement", child)
+        self._close_child(child)
         self._create_child(self.target, *self.target_args,
                            **self.target_kwargs)
 
@@ -298,7 +309,7 @@ class VHFPool:
         self.rq_thread_active = True
 
         # Counter for not invoking joining of dead children too frequently.
-        self.rq_thread_dc: int = 0
+        self.rq_thread_dc: int = 2
 
         while True:
             # Terminate driving loop if HUP'd
@@ -340,16 +351,19 @@ class VHFPool:
                                 "[Requeuer] Recieved from child=%s, data=%s",
                                 x, data
                             )
+                            self._close_live_child_with_replacement(x)
                 except Empty:
                     pass
                 except BlockingIOError:
                     self.logger.debug(
                         "BlockingIOError occured while trying to poll from %s.", x)
                 except EOFError:
-                    self.logger.warning("EOF Error reached! Exiting!")
-                    # We leave the original thread to cleanup all children.
-                    self.rq_thread_active = False
-                    return
+                    self.logger.warning(
+                        "EOF Error reached on possibly dead child %s.",
+                        x
+                    )
+                    # Chances are child has died after raising error.
+                    self._close_dead_child_with_replacement(x)
                 except Exception as exc:
                     self.logger.critical("exc = %s", exc, exc_info=True)
 
@@ -357,8 +371,8 @@ class VHFPool:
             if len(self._dead_children) > 0:
                 self.rq_thread_dc += 1
                 if self.rq_thread_dc == 10:
-                    self.rq_thread_dc = 0
-            if self.rq_thread_dc == 0:
+                    self.rq_thread_dc = 1
+            if self.rq_thread_dc == 1:
                 for x in self._dead_children:
                     # _close_child removes x from list if successful
                     self._close_child(x)
@@ -396,7 +410,11 @@ class VHFPool:
         self._current_child.connection.send(msg)
         self._previous_current_child = self._current_child
         # Get a new child
+        self._current_child = None
+        while len(self.queue) < 1:
+            sleep(0.2)
         self._current_child = self.queue.popleft()
+        self.logger.debug("Assigned a new current child: %s", self._current_child)
         return self._previous_current_child
 
     # @disable_warn_if_auto
@@ -429,7 +447,11 @@ class VHFPool:
         child = self._send_to_child(cont(*args))
         # self._nonblock_warn = True
         # The next step is blocking
-        data = child.connection.recv_bytes()
+        try:
+            data = child.connection.recv_bytes()
+        except EOFError:
+            self._close_dead_child_with_replacement(child)
+            return False
         if data == self.c_sig.action_cont:
             return True
         elif data == self.c_sig.action_hup:
@@ -449,9 +471,7 @@ class VHFPool:
             )
             self.logger.warning("data = %s", data)
             if True:  # TODO
-                self._close_child(child)  # Child is known to be dead here
-                self._create_child(self.target, *self.target_args,
-                                   **self.target_kwargs)
+                self._close_dead_child_with_replacement(child)
             return False
 
     # Section: Personal cleanup

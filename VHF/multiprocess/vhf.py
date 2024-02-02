@@ -201,7 +201,7 @@ class genericVHF(metaclass=ABCMeta):
         try:
             self.logger.debug("Deleting temporary file...")
             os.unlink(self._tmpName)
-            self.logger.debug("Deleted temporary file...")
+            self.logger.debug("Deleted temporary file.")
         except FileNotFoundError:
             self.logger.warning("Deleted File was not in tmp dir.")
         except Exception as e:
@@ -341,7 +341,12 @@ class genericVHF(metaclass=ABCMeta):
                         self.tmp_close()
 
                         # Analyse and wrap up.
-                        self.analyse_parse(parsed, pname, data[2:])
+                        try:
+                            self.analyse_parse(parsed, pname, data[2:])
+                        except Exception as exc:
+                            self.logger.critical("exc = %s", exc, exc_info=True)
+                            self.comm.send_bytes(c_sig.action_generic_error)
+                            continue
                         self.fail_count = 0
                         self.logger.info("Analysis and plot complete!")
                         if self.request_requeue:

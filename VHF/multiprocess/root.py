@@ -222,7 +222,11 @@ class IdentifiedProcess:
         """Cleanup IdentifiedProcess instance."""
         # assert process has already been dead
         if self.is_alive():
-            raise Exception("Cleanup of IdentifiedProcess before Process")
+            # raise Exception("Cleanup of IdentifiedProcess before Process")
+            self.logger.warning("Cleanup of IdentifiedProcess before Process.")
+            while not self.close_proc():
+                self.logger.debug("Failed to close_proc on %s", self)
+                sleep(0.2)
 
         # https://stackoverflow.com/a/58800703
         name = self.logger.name

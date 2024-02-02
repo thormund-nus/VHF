@@ -119,12 +119,16 @@ class FuncGenExpt(genericVHF):
         f["mean"][npz_loc] = a
         f["std_dev"][npz_loc] = b
         f["min"][npz_loc] = c
+        remaining_keys = f.copy()
+        for to_remove in ["mean", "std_dev", "min"]:
+            remaining_keys.pop(to_remove, None)
 
         np.savez(
             self.npz_path,
             mean=f["mean"],
             std_dev=f["std_dev"],
             min=f["min"],
+            **remaining_keys
         )
         self.npz_lock.release()
         self.logger.info("Written to npz file, and released lock.")
@@ -179,5 +183,7 @@ class FuncGenExpt(genericVHF):
                             (8.25 - 0.875 * 2), view_const * 2.5)
         fig.tight_layout()
         fig.savefig(fname, dpi=300, format="png", transparent=True)
-        # plt.close(fig)
         self.logger.debug("Plot completed and saved.")
+        # free memory?
+        fig.clear()
+        plt.close(fig)
