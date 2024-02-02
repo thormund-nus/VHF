@@ -27,8 +27,8 @@ _PATH = Union[str, PathLike, Path]
 class FuncGenExpt(genericVHF):
     """Process for performing 1x sample of VHF and relevant followup."""
 
-    def __init__(self, comm: Connection, q: Queue, conf_path: _PATH,
-                 npz_lock: LockType, **kwargs):
+    def __init__(self, comm: Connection, parent_comm: Connection, q: Queue,
+                 conf_path: _PATH, npz_lock: LockType, **kwargs):
         """Perform data collection and analysis as instructed by root.
 
         Communicated with via VHF Pool; in charge of collecting 1 round of
@@ -43,6 +43,8 @@ class FuncGenExpt(genericVHF):
         comm: Connection
             For receiving instructions and sending instructions to root. Refer
             to main_func for message codes.
+        parent_comm: Connection
+            Parent's end of pipe for child process to close.
         q: Queue
             For sharing a queue handler to ensure multiprcess-safe logging.
             Passed into root logger before creating self.logger =
@@ -59,7 +61,7 @@ class FuncGenExpt(genericVHF):
         # loop.
 
         # 1. init class specific attributes
-        super().__init__(comm, q, conf_path, kwargs=kwargs)
+        super().__init__(comm, parent_comm, q, conf_path, kwargs=kwargs)
         self.npz_lock: LockType = npz_lock  # Acquired prior to writing to common npz
         # https://github.com/matplotlib/matplotlib/issues/20300#issuecomment-848201196
         matplotlib.use('agg')  # No GUI is being displayed. Saves memory.

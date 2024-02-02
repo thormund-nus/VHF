@@ -41,9 +41,10 @@ def log_listener(q: Queue):
 class GenericChildMultiProcess():
     """Generic Child Process that is not threaded for this unit test file."""
 
-    def __init__(self, comm: Connection, q: Queue):
+    def __init__(self, comm: Connection, par_comm: Connection, q: Queue):
         """Initializer for all children in this unit test file."""
         self.init_log(q)
+        par_comm.close()
         self.comm: Connection = comm
         self.pid: int | None = multiprocessing.current_process().pid
         self.logger.debug("Obtained PID %s.", self.pid)

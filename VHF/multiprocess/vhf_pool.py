@@ -9,9 +9,7 @@ from collections import deque
 from inspect import getmembers, isroutine
 import logging
 from logging import Logger, getLogger
-from logging.handlers import QueueHandler
-from multiprocessing import Process, Pipe, Queue, connection
-from multiprocessing.connection import Connection
+from multiprocessing import Process, Pipe, Queue
 from queue import Empty
 from threading import Thread
 from time import sleep
@@ -189,7 +187,7 @@ class VHFPool:
         sink, src = Pipe()
         job: Process = Process(
             target=target,
-            args=(src, *args),
+            args=(src, sink, *args),
             name="VHF "+str(self._count).zfill(2),
             kwargs=kwargs,
         )

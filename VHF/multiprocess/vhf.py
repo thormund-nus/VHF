@@ -53,8 +53,8 @@ class genericVHF(metaclass=ABCMeta):
     # Definitions and constants (https://stackoverflow.com/a/75829903)
     FAIL_MAX: int
 
-    def __init__(self, comm: Connection, q: Queue, vhf_conf_path: _PATH,
-                 *args, **kwargs):
+    def __init__(self, comm: Connection, parent_comm: Connection, q: Queue,
+                 vhf_conf_path: _PATH, *args, **kwargs):
         """Provisions generic methods associated to VHF collection of traces.
 
         Inputs
@@ -62,6 +62,8 @@ class genericVHF(metaclass=ABCMeta):
         comm: multiprocessing.connection.Connection
            Pipe that allows child process here to send state of this process
            back to parent
+        parent_comm: multiprocessing.connection.Connection
+            Parent's end of pipe for child process to close.
         q: Queue
             For sharing a queue handler to ensure multiprcess-safe logging.
             Passed into root logger before creating self.logger =
@@ -76,6 +78,9 @@ class genericVHF(metaclass=ABCMeta):
         """
         # 1. logging!
         self.init_log(q)
+        # 2. same as parent closes child's end after fork, child should close
+        # parent's end of Pipe after fork
+        parent_comm.close()
         # class definitions
         self.exit_code: int = 0  # Exit code for sys.exit()
         self.comm: Connection = comm
