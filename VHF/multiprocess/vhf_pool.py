@@ -102,8 +102,6 @@ class VHFPool:
         self._previous_current_child: IdentifiedProcess = None
 
         # Requeue worker
-        # sleep(0.5)
-        self.rq_thread_active = False
         self.rq_thread_queue = Queue()
         self.start_requeue_worker()
 
@@ -178,7 +176,7 @@ class VHFPool:
         return result
 
     # Section: Child management
-    def _create_child(self, target: Callable, *args, **kwargs):
+    def _create_child(self, target: Callable, *args, **kwargs) -> IdentifiedProcess:
         """Update master list of newly created child.
 
         self._children neeeds to be updated with a fully live child in this
@@ -202,6 +200,7 @@ class VHFPool:
         # init or requeue worker to do
         self.logger.debug("Appended %s to self._children.", ip)
         self.logger.debug("%s associated to %s", ip, job)
+        return ip
 
     def _close_child(self, child: IdentifiedProcess):
         """Attempt to join child with cleanup.
@@ -243,23 +242,26 @@ class VHFPool:
 
     def _close_live_child_with_replacement(self, child: IdentifiedProcess):
         """Attempt to close live child, and spawn a replacement."""
-        self._close_child(child)
         if child not in self._children:
             self.logger.warning(
                 "Invoked _close_live_child_with_replacement on possibly "
-                "zombie child. Replacement child not created."
+                "zombie child. Replacement child STILL created."
             )
-            return
-        self._create_child(self.target, *self.target_args,
-                           **self.target_kwargs)
+        self._close_child(child)
+        ip = self._create_child(self.target, *self.target_args,
+                                **self.target_kwargs)
+        # The first time the child process is created, it dooes not ask to be requeued
+        self.queue.append(ip)
 
     def _close_dead_child_with_replacement(self, child: IdentifiedProcess):
         """Attempt to close dead child, and spawn a replacement."""
         self.logger.warning(
             "Closing possibly dead child %s with replacement", child)
         self._close_child(child)
-        self._create_child(self.target, *self.target_args,
-                           **self.target_kwargs)
+        ip = self._create_child(self.target, *self.target_args,
+                                **self.target_kwargs)
+        # The first time the child process is created, it dooes not ask to be requeued
+        self.queue.append(ip)
 
     # Section: Thread management
     def _populate_children(self):
@@ -284,7 +286,22 @@ class VHFPool:
         self.queue.append(ip)
 
     def start_requeue_worker(self):
-        """Worker thread involved in requeuing children who return ready."""
+        """Worker thread involved in requeuing children who return ready.
+
+        This function acts as the entry point to spawning this requeue worker
+        if existing worker was killed, and does not spawn extra worker if an
+        existing worker is found to exist.
+        """
+        self.logger.info("Starting requeue worker.")
+        try:
+            if self.rq_thread.is_alive():
+                self.logger.warning(
+                    "start_requeue_worker called despite alive requeue worker. not spawning!")
+                return
+            # else:
+            #     self.rq_thread.join()  # no harm joining again?
+        except AttributeError:
+            self.logger.debug("Testing for live rq_thread found no thread.")
         self.rq_thread = Thread(
             target=self.requeue_work
         )
@@ -298,15 +315,6 @@ class VHFPool:
         tries to close out all zombie child processes.
         """
         self.logger.info("Requeue worker has started.")
-
-        # Check for solo instance
-        if self.rq_thread_active:
-            self.logger.warning(
-                "An active requeue worker has already been found! "
-                "Terminating..."
-            )
-            return
-        self.rq_thread_active = True
 
         # Counter for not invoking joining of dead children too frequently.
         self.rq_thread_dc: int = 2
@@ -379,6 +387,13 @@ class VHFPool:
 
             # Add some delay before next batch of requeue attempts
             sleep(0.2)
+            # self.logger.debug(
+            #     "[Requeuer] self._children = %s, self.queue = %s, self._dead_children = %s, self._candidates_of_children_to_requeue = %s",
+            #     self._children,
+            #     self.queue,
+            #     self._dead_children,
+            #     self._candidates_of_children_to_requeue(),
+            # )
 
     def _close_all(self):
         """Terminates all children."""
@@ -413,8 +428,17 @@ class VHFPool:
         self._current_child = None
         while len(self.queue) < 1:
             sleep(0.2)
+            # self.logger.debug(
+            #     "Waiting to pop for current_child. self.queue = %s",
+            #     self.queue
+            # )
+            if not self.rq_thread.is_alive():
+                self.rq_thread.join()
+                self.start_requeue_worker()
+                sleep(0.2)
         self._current_child = self.queue.popleft()
-        self.logger.debug("Assigned a new current child: %s", self._current_child)
+        self.logger.debug("Assigned a new current child: %s",
+                          self._current_child)
         return self._previous_current_child
 
     # @disable_warn_if_auto
@@ -485,10 +509,10 @@ class VHFPool:
         self._closed = True
 
         # cleanup spawned thread
-        if self.rq_thread_active:
+        if self.rq_thread.is_alive():
             self.logger.info("Putting HUP to requeuer thread in VHFPool.")
-            sleep(0.05)
             self.rq_thread_queue.put(HUP)
+            sleep(0.05)
         self.rq_thread.join()  # Doc: A thread can joined many times
         self.logger.debug("self.rq_thread joined.")
 

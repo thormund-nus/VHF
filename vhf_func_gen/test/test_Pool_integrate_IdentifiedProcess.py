@@ -7,12 +7,12 @@ from logging.handlers import QueueHandler
 import multiprocessing
 from multiprocessing import Lock, Queue
 from multiprocessing.connection import Pipe
+from threading import Thread
 from typing import Callable, Generator, Mapping, Tuple
 import numpy as np
 import os
 from pathlib import Path
 import sys
-from threading import Thread
 module_path = str(Path(__file__).parents[2].joinpath(
     "vhf_func_gen").joinpath("run_vhf_dep"))
 if module_path not in sys.path:

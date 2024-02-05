@@ -84,6 +84,7 @@ class FuncGenExpt(genericVHF):
             self.exit_code = 1
             self.close()
         self.comm.send((0, self.pid))
+        self.logger.debug("Sent init completion: %s", (0, self.pid))
         self.main_func()
 
     def conf_parse(self, conf_path: _PATH):
