@@ -182,15 +182,28 @@ class VHFPool:
         self._children neeeds to be updated with a fully live child in this
         stage, with all details filled.
         """
-        sink, src = Pipe()
-        job: Process = Process(
-            target=target,
-            args=(src, sink, *args),
-            name="VHF "+str(self._count).zfill(2),
-            kwargs=kwargs,
-        )
         # IdentifiedProcess wrapper starts child process.
-        ip = IdentifiedProcess(job, sink)
+        ip: IdentifiedProcess = None
+        while ip is None:
+            try:
+                sink, src = Pipe()
+                job: Process = Process(
+                    target=target,
+                    args=(src, sink, *args),
+                    name="VHF "+str(self._count).zfill(2),
+                    kwargs=kwargs,
+                )
+                ip = IdentifiedProcess(job, sink)
+            except ValueError:
+                self.logger.warning(
+                    "Failed to create an IdentifiedProcess. Trying again.")
+                ip = None
+                pass
+            except Exception as exc:
+                self.logger.critical("exc = %s", exc, exc_info=True)
+                self.logger("Closing VHF Pool.")
+                self.close()
+
         # https://stackoverflow.com/a/74742887
         # https://stackoverflow.com/a/8595331
         # https://stackoverflow.com/q/71532034
@@ -410,7 +423,7 @@ class VHFPool:
         self.logger.info("All children process are closed.")
 
     # Section: Handling of active child
-    def _send_to_child(self, msg) -> IdentifiedProcess:
+    def _send_to_child(self, msg) -> tuple[IdentifiedProcess, bool]:
         """Send msg to child process.
 
         Returns
@@ -422,7 +435,13 @@ class VHFPool:
         # Propagate message to available child.
         self.logger.info(
             "Sending msg = `%s` to child with PID `%s`", msg, self._current_child.pid)
-        self._current_child.connection.send(msg)
+        try:
+            self._current_child.connection.send(msg)
+            success = True
+        except BrokenPipeError:
+            self.logger.warning(
+                "Child %s Pipe found to be closed!", self._current_child.pid)
+            success = False
         self._previous_current_child = self._current_child
         # Get a new child
         self._current_child = None
@@ -439,7 +458,7 @@ class VHFPool:
         self._current_child = self.queue.popleft()
         self.logger.debug("Assigned a new current child: %s",
                           self._current_child)
-        return self._previous_current_child
+        return self._previous_current_child, success
 
     # @disable_warn_if_auto
     # def continue_child_nonblock(self, *args) -> IdentifiedProcess:
@@ -462,15 +481,14 @@ class VHFPool:
         Check if True to determine if child has performed trace
         successfully.
         """
-        # if self.manual_user:
-        #     self.logger.warning(
-        #         "continue_child has been invoked! Consider continue_child_nonblock.")
+        # it is possible that sending to child find itself as being a dead child
+        child, success = self._send_to_child(cont(*args))
+        if not success:
+            # Broken Pipe Error was handled within _send_to_child
+            self.logger.warning("Child to be replaced.")
+            self._close_dead_child_with_replacement(child)
+            return False
 
-        # self._nonblock_warn = False
-        # child = self.continue_child_nonblock(*args)
-        child = self._send_to_child(cont(*args))
-        # self._nonblock_warn = True
-        # The next step is blocking
         try:
             data = child.connection.recv_bytes()
         except EOFError:

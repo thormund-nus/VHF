@@ -83,7 +83,12 @@ class FuncGenExpt(genericVHF):
             self.comm.send_bytes(b'1')
             self.exit_code = 1
             self.close()
-        self.comm.send((0, self.pid))
+        try:
+            self.comm.send((0, self.pid))
+        except BrokenPipeError as e:
+            self.logger.warning("Failed to sent initialisation!")
+            self.logger.critical("exc = %s", e, exc_info=True)
+            self.close()
         self.logger.debug("Sent init completion: %s", (0, self.pid))
         self.main_func()
 
