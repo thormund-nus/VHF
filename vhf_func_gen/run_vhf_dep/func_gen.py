@@ -193,7 +193,7 @@ class SyncSingleChannelFuncGen():
         #     res := float(self.get_amplitude(channel))), f"result={res}"
 
     @log_query
-    def get_amplitude(self, channel: Optional[str] = None):
+    def get_amplitude(self, channel: Optional[str | int] = None):
         if channel is None:
             channel = self.channel
         return self.ask(f"SOURce{channel}:VOLTage:LEVel:IMMediate:AMPLitude?")
