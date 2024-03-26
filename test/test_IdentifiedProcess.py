@@ -32,7 +32,14 @@ class GenericChild:
             self.comm.send_bytes(b'1')
             self.exit_code = 1
             self.close()
-        self.comm.send((0, self.pid))
+        try:
+            self.comm.send((0, self.pid))
+            self.logger.debug("Initialisation sent!")
+        except BrokenPipeError as e:
+            self.logger.warning("Failed to sent initialisation!")
+            self.logger.critical("exc = %s", e, exc_info=True)
+            self.exit_code = 1
+            self.close()
         self.main_func()
 
     def init_log(self, q):
@@ -56,6 +63,15 @@ class GenericChild:
     def main_func(self):
         raise NotImplementedError
 
+    def close(self):
+        """Close up class that pulls data from VHF."""
+        self.logger.info("Initiating Closing...")
+        # Does q from parameters of __init__ require to be closed too?
+        self.comm.close()
+        self.logger.info("Closed child VHF process end of Pipe().")
+        self.logger.info("Closed with exit_code %s", -self.exit_code)
+        sys.exit(self.exit_code)
+
 
 class Regular(GenericChild):
     def main_func(self):
@@ -74,6 +90,34 @@ class Regular(GenericChild):
                     sleep(0.3)
                 case signal.action_hup:
                     self.close()
+
+class DelayedGeneric(GenericChild):
+    def __init__(self, comm: Connection, q: Queue):
+        self.init_log(q)
+        self.comm: Connection = comm
+        self.pid: int | None = multiprocessing.current_process().pid
+        self.logger.debug("Obtained PID %s.", self.pid)
+        self.exit_code = 0
+        if self.pid is None:
+            # This really should not be occuring!
+            self.logger.error("Failed to obtain a PID for child process.")
+            self.comm.send_bytes(b'1')
+            self.exit_code = 1
+            self.close()
+        sleep(1.2)
+        try:
+            self.comm.send((0, self.pid))
+            self.logger.warning("BAD: Initialisation sent!")
+        except BrokenPipeError as e:
+            self.logger.warning("GOOD: Failed to sent initialisation!")
+            self.logger.critical("exc = %s", e, exc_info=True)
+            self.exit_code = 1
+        self.close()
+        # self.main_func()
+
+class DelayedRegular(DelayedGeneric, Regular):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args,**kwargs)
 
 
 def test_IdentifiedProcess_classvariable():
@@ -192,3 +236,56 @@ def test_logger_freeup():
         lambda x: "09" in str(logging.getLogger(x)),
         logging.root.manager.loggerDict
     ))
+
+
+def test_broken_parent_mock():
+    """Ensure that the mock class used for the next test has appropriate MRO."""
+    logging.info("DelayedRegular.mro() = %s", DelayedRegular.mro())
+    assert DelayedRegular.main_func == Regular.main_func
+
+def test_broken_parent_process():
+    """Parent's pipe might be broken before child gets to init. Child should
+    just terminate as such. Faulty test not properly replicating Errno 32
+    Broken Pipe."""
+    # start of test
+    IdentifiedProcess.set_close_delay(timedelta(seconds=1.0))
+    IdentifiedProcess.set_process_name("BrokenParent")
+    q = Queue()
+    sink, src = Pipe()
+    def pipe_killer_fn(p: Connection):
+        sleep(0.15)
+        logging.info("Parent process crashed pipe!")
+        p.close()
+    def pipe_checker_fn(p: Connection):
+        sleep(0.25)
+        logging.info("pipe closed? = %s", p._close)
+
+    pipe_killer = Thread(
+        target=pipe_killer_fn,
+        args=(sink,)
+    )
+    pipe_checker = Thread(
+        target=pipe_checker_fn,
+        args=(sink,)
+    )
+
+    pipe_killer.start()
+    pipe_checker.start()
+
+    with pytest.raises((BrokenPipeError, OSError)) as e:
+        child = IdentifiedProcess(
+            Process(
+                target=DelayedRegular,
+                args=(src, q),
+            ),
+            sink,
+        )  # this is a blocking step, closing of sink needs to be done between
+        # the start and end of this...
+        # pytest scope ends here as error was obtained
+    sleep(1.6)
+    logging.info("sink.readable = %s", sink.readable)
+    # assert not child.is_alive()
+    # child.close_proc()
+    # child.close()
+    logging.info("pipe_killer.is_alive() = %s", pipe_killer.is_alive())
+    # pipe_killer.join()
