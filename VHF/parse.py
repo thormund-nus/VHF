@@ -367,5 +367,6 @@ class VHFparser:
 
         Radius is obtained by sqrt(Q^2 + I^2).
         """
-        radii = np.sqrt(np.power(self.q_arr, 2) + np.power(self.i_arr, 2))
+        # dtype starting from int32 should be a non-issue
+        radii = np.hypot(self.q_arr, self.i_arr)
         return radii
