@@ -49,10 +49,7 @@ class FuncGenExptRoot():
         self.npz_database_path()
 
         # Prepare function generator
-        self.func_gen = SyncSingleChannelFuncGen(
-            self.conf.get("Function Generator", "serial_no_full"),
-            channel='1', timeout=3.
-        )
+        self.setup_independent_variable()
 
         # Prepare VHFPool
         IdentifiedProcess.set_process_name("VHF")
@@ -130,6 +127,11 @@ class FuncGenExptRoot():
         for k in ["serial_no_full", "channel", "minimum_voltage", "maximum_voltage", "power_steps"]:
             assert self.conf.has_option("Function Generator", k)
 
+        # Check that VHF board is accessible
+        assert Path(self.conf.get("Paths", "board")).exists()
+        assert Path(self.conf.get("Paths", "board")).resolve().exists()
+
+        # Ensure that at least 2 children processes are spawnable
         self.num_vhf_managers = int(
             eval(self.conf.get("Multiprocess", "num_vhf_managers")))
         assert self.num_vhf_managers >= 2
@@ -183,7 +185,7 @@ class FuncGenExptRoot():
         channel = self.conf.get("Function Generator", "channel")
         # This is an independent variable being given by another file.
         self.func_gen: SyncSingleChannelFuncGen = SyncSingleChannelFuncGen(
-            rsc_str, channel
+            rsc_str, channel=channel, timeout=3.
         )
 
     def setup_child_VHFs(self, target: Callable, fail_forward: Mapping):
@@ -241,7 +243,7 @@ def main():
     )
     filehandler.setLevel(logging.DEBUG)
     streamhandler = logging.StreamHandler(sys.stdout)
-    streamhandler.setLevel(logging.DEBUG)
+    streamhandler.setLevel(logging.INFO)
     fmtter = logging.Formatter(
         # the current datefmt str discards date information
         '[%(asctime)s.%(msecs)03d] (%(levelname)s)\t[%(processName)s:%(threadName)s] %(name)s: \t %(message)s',
