@@ -35,3 +35,21 @@ parser.
 
 The output files generated here will be used to determine if the IQ unwrapping
 is done correctly.
+
+## obtainPhaseWithIncreasingVoltage.py
+
+November 2023 - 2024
+
+This script is a proof of concept for multiprocessed data collection and
+processing simultaneously. This was created partially during a suggestion to
+understand the radius of the VHF board as a function of the RF@140MHz power
+into the VHF's ADC.
+
+Further TODOs:
+1. Seperation of concerns between this file as the main driver that spawns all
+   others processes.
+2. Have child processes that are processing its collected data instead spawn a
+   child process that does the plotting to avoid matplotlib memory leaks.
+3. Long term goal: Have a singular sampling process instead, and hand off the
+   temp_file variable to other processes that perform the analysis/plotting
+   instead.

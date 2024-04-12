@@ -1,4 +1,3 @@
-"""With VHFPool now having been written, we should test that it works."""
 from configparser import ConfigParser, ExtendedInterpolation
 from datetime import datetime, timedelta
 import logging
@@ -12,20 +11,37 @@ from typing import Callable, Generator, Mapping, Tuple
 import numpy as np
 import os
 from pathlib import Path
+from run_vhf_dep.collect import FuncGenExpt  # noqa
+from run_vhf_dep.func_gen import SyncSingleChannelFuncGen  # noqa
 import sys
-module_path = str(Path(__file__).parents[2].joinpath(
+module_path = str(Path(__file__).parents[1].joinpath(
     "vhf_func_gen").joinpath("run_vhf_dep"))
 if module_path not in sys.path:
     sys.path.append(module_path)
-# from ..run_vhf_dep.collect import FuncGenExpt
-# from ..run_vhf_dep.func_gen import SyncSingleChannelFuncGen
-from collect import FuncGenExpt  # noqa
-from func_gen import SyncSingleChannelFuncGen  # noqa
 from VHF.runner import VHFRunner  # noqa
 from VHF.multiprocess.root import IdentifiedProcess  # noqa
 from VHF.multiprocess.signals import ChildSignals, cont, HUP  # noqa
 from VHF.multiprocess.vhf_pool import VHFPool  # noqa
 
+# Experiment aim:
+# Collect phase over time from a specified function generator, and derive
+# properties of the phase such as spectrogram for analysis into stability and
+# internals of the VHF board.
+#
+# Technical details:
+# This script serves as demonstration in simultaneous data collection and
+# processing.
+#
+# Expected Folder Structure:
+# . (Repository Root)
+# ├ VHF (Yet-to-be module for operations of VHF board)
+# | └ multiprocess (collection of code for running experiment in multiprocess)
+# |   └ xyz.py
+# └ vhf_func_gen
+#   ├ run_vhf_dep (collection of experiment specific code involving func gen)
+#   | └ xyz.py
+#   ├ obtainPhaseWithIncreasingVoltage.py (This file)
+#   └ VHF_FuncGen_params.ini (Specified in a variable in main())
 
 def no_matplot(record: LogRecord):
     return not record.name.startswith("matplotlib") and not record.name.startswith("PIL")
@@ -266,7 +282,7 @@ def main():
 
     # Create root process
     expt = FuncGenExptRoot(
-        conf_path=Path(__file__).parents[1].joinpath(
+        conf_path=Path(__file__).parent.joinpath(
             "VHF_FuncGen_params.ini"),
         vhf_child=FuncGenExpt,
         vhf_fail_forward=fail_forward,
