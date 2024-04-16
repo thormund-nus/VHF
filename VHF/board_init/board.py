@@ -36,7 +36,7 @@ def find_device_by_sys() -> List[str]:
             continue
 
         with open(prod_path, 'r') as f:
-            content = f.read()
+            content = f.read().strip()
             if 'VHF' in content:
                 result.append(device)
                 logger.info("device '%s' has product '%s'", device, content)
@@ -159,6 +159,9 @@ class Board:
             self.logger.warn("Found: %s", found)
             if self.verbose:
                 print(f"Search: {self.board_id}\nMore than 1 found: {found}")
+        elif len(found) == 0:
+            raise ValueError(f"board_id ({self.board_id}) not found in Path")
+
         return found[0]
 
     def interface_path(self) -> Path:
