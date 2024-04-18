@@ -11,23 +11,29 @@ from time import sleep
 class SyncSingleChannelFuncGen():
     """Tektronix Function Generator Single Channel synchrous operation wrapper."""
 
-    def __init__(self, rsc_str: str = '', channel: str = '1', timeout: float = 2) -> None:
+    def __init__(self, rsc_str: str = '', channel: str = '1',
+                 timeout: float = 2, ext_ref: bool = True) -> None:
         """Synchrous Tektronix Function Generator instance with single channel.
 
         Input
         -----
         device_path (str): full path to the serial device as arguments
         timeout (float): Optional. serial device timeout in seconds
+        ext_ref (bool): If to use the external 10 MHz reference clock or not.
         """
         # Manual obtainable from: https://www.tek.com/en/signal-generator/afg3000-manual/afg3000-series-1
         rm = ResourceManager()
         self.my_resource: USBInstrument = rm.open_resource(
-            rsc_str, open_timeout=timeout
+            rsc_str, open_timeout=int(timeout*1000)
         )
         self.__init_logger()
         self.logger.info(
             "Resource has been opened. Close connection by using del on instance.")
         self.channel = channel
+        self.ext_clock = ext_ref
+        self.logger.info(
+            "External clock use set to %s", self.ext_clock
+        )
 
     # Typecasts all methods and properties of self.my_resource to self
     def __getattr__(self, __name: str):
@@ -83,7 +89,10 @@ class SyncSingleChannelFuncGen():
         """Ensure channel output is sinusoidal"""
         if channel is None:
             channel = self.channel
-        self.write("SOURce:ROSCillator:SOURce EXTernal")  # reference clock
+        # reference clock
+        self.write(
+            f"SOURce:ROSCillator:SOURce {'EXTernal' if self.ext_clock else 'INTernal'}"
+        )
         self.write(f"OUTPut{channel}:IMPedance 50 ohms")  # Sets impendance
         self.write(f"OUTPUT{channel}:STATE ON")  # Turns output on
         self.write(f"SOURce{channel}:FREQuency:MODE CW")

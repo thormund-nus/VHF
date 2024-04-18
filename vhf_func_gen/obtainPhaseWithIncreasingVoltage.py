@@ -199,9 +199,10 @@ class FuncGenExptRoot():
         """Set up Tektronix Function Generator."""
         rsc_str = self.conf.get("Function Generator", "serial_no_full")
         channel = self.conf.get("Function Generator", "channel")
+        external_clock = self.conf.getboolean("Function Generator", "external_clock")
         # This is an independent variable being given by another file.
         self.func_gen: SyncSingleChannelFuncGen = SyncSingleChannelFuncGen(
-            rsc_str, channel=channel, timeout=3.
+            rsc_str, channel=channel, timeout=3., ext_ref=external_clock
         )
 
     def setup_child_VHFs(self, target: Callable, fail_forward: Mapping):
