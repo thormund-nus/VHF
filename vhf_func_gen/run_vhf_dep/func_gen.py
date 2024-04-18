@@ -29,8 +29,14 @@ class SyncSingleChannelFuncGen():
         self.__init_logger()
         self.logger.info(
             "Resource has been opened. Close connection by using del on instance.")
-        self.channel = channel
+        for c in (r'"', r"'", " "):
+            if c in channel:
+                channel = channel.replace(c, "")
+        self.channel: str = channel
         self.ext_clock = ext_ref
+        self.logger.info(
+            "Channel in use is: %s", self.channel
+        )
         self.logger.info(
             "External clock use set to %s", self.ext_clock
         )
