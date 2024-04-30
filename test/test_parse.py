@@ -60,6 +60,14 @@ def test_TraceTimer_regular():
     change_status = timings.update_plot_timing(start=abs_start, duration=dur)
     assert not change_status
 
+def test_TraceTimer_empty():
+    example_start = datetime(2024, 1, 19, 0, 34, 36,
+                             tzinfo=timezone(timedelta(seconds=28800)))
+    example_freq = 40000  # Hz
+    example_size = example_freq * 2 * 60 * 60  # 2 hours
+    timings = TraceTimer(0, example_start, example_freq, example_size)
+    change_status = timings.update_plot_timing(start=None, end=None)
+    assert not change_status
 
 def test_TraceTimer_empty():
     example_start = datetime(2024, 1, 19, 0, 34, 36,
