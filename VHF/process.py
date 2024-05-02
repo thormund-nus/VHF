@@ -3,7 +3,6 @@ import logging
 from os import PathLike
 from pathlib import Path
 import subprocess
-from subprocess import DEVNULL
 from typing import Union
 
 
@@ -40,7 +39,7 @@ def board_in_use(device: _PATH) -> bool:
     #   /dev/usbhybrid1:     16276m
     # as fuser resolves /dev/ioboards/VHFP-QO01 to /dev/usbhybrid1.
     # As such, we only need to check the returned output to see if the board
-    # is under useage.
+    # is under usage.
 
     # dev: cast from str to Path if necessary
     dev: Path = Path(device).resolve()
@@ -60,6 +59,6 @@ def board_in_use(device: _PATH) -> bool:
     except subprocess.CalledProcessError as e:
         # Somehow has e,returncode = 1 in Python but not in the shell if device
         # is not being used.
-        logger.info("Tried `fuser %s`, recieved: %s", dev, e)
+        logger.info("Tried `fuser %s`, received: %s", dev, e)
         logger.info("This is expected if device is not being used.")
         return False

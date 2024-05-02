@@ -74,7 +74,7 @@ class SamplingSpeed(EnumWithAttrs):
             return SamplingSpeed.high
         else:
             raise NotImplementedError(
-                "SamplingSpeed.fromstr has recieved unrecognised input: "
+                "SamplingSpeed.fromstr has received unrecognised input: "
                 f"{REDBOLD}{label}{RESET}. Accept only 'low' or 'high'.")
 
 
@@ -102,7 +102,7 @@ class Encode(EnumWithAttrs):
                 return Encode.ASC
             case _:
                 raise NotImplementedError(
-                    "Encode.fromstr has recieved unrecognised input: "
+                    "Encode.fromstr has received unrecognised input: "
                     f"{REDBOLD}{label}{RESET}. Accepts only 'binary', "
                     "'hexadecimal', 'ascii', or 'text'")
 
@@ -321,7 +321,7 @@ class VHFRunner():
         if self.to_file:
             if ' ' in self.path["save_dir"]:
                 # This is the only part of the file name that is user-defined.
-                # VHF board tested to have not been able to recieve -o flag
+                # VHF board tested to have not been able to receive -o flag
                 # with spaces in the name, as of SVN version 22. This can be
                 # bypassed by using "-o -" to pipe into STDOUT, which can then
                 # be passed as STDIN for writing from.

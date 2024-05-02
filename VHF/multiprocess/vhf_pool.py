@@ -24,7 +24,7 @@ class VHFPool:
     From the perspective of the root process, root only needs to know that it
     will be sending a message to *some* child process, and that when all is
     said and done, to close all processes.
-    To ensure timely handling of SIGINT or errors being recieved in polling
+    To ensure timely handling of SIGINT or errors being received in polling
     from children processes, we have the requeue procedure be done in a
     secondary thread. The requeue process can therefore act on signals from
     child processes, such as SIGINT to be propagated to all other processes.
@@ -63,7 +63,7 @@ class VHFPool:
         *args, **kwargs:
             Passed onto target. Note that the first 2 arguments of Target
             should consume multiprocessing.connection.Connection and
-            multiprocessing.Queue in the specified order, for recieving
+            multiprocessing.Queue in the specified order, for receiving
             messages from this VHFPool object, and for the IdentifiedProcess's
             Target to log to.
             Refer to VHF.multiprocess.vhf.genericVHF for clarification.
@@ -87,7 +87,7 @@ class VHFPool:
         self._init_checks_fail_forward()
 
         # Pool: Number of children
-        self.count = count  # Target nuber of Jobs to create
+        self.count = count  # Target number of Jobs to create
         self._count = 0  # Number of Jobs created to far
         # Pool: List of children that should be alive/killed
         self._children: list[IdentifiedProcess] = list()
@@ -95,7 +95,7 @@ class VHFPool:
         self._populate_children()
 
         # Pop from left to get an available VHF child process.
-        # Needs to be initalised
+        # Needs to be initialised
         self.queue: Deque = deque([x for x in self._children])
         # Child that is to be used for next sampling instance.
         self._current_child: IdentifiedProcess = self.queue.popleft()
@@ -121,8 +121,8 @@ class VHFPool:
         Checks if fail_forward is as close to ChildSignals as is expected, that
         is to say, all ChildSignals attributes should be keys of fail_forward,
         but no key of fail_forward should not be a ChildSignals attribute.
-        Returns dictionary, where key, value pair has value = list of attrbutes
-        found in key but not found in other comparision.
+        Returns dictionary, where key, value pair has value = list of attributes
+        found in key but not found in other comparison.
         """
         self.logger.debug("init_check start.")
         result = {}
@@ -179,7 +179,7 @@ class VHFPool:
     def _create_child(self, target: Callable, *args, **kwargs) -> IdentifiedProcess:
         """Update master list of newly created child.
 
-        self._children neeeds to be updated with a fully live child in this
+        self._children needs to be updated with a fully live child in this
         stage, with all details filled.
         """
         # IdentifiedProcess wrapper starts child process.
@@ -218,7 +218,7 @@ class VHFPool:
     def _close_child(self, child: IdentifiedProcess):
         """Attempt to join child with cleanup.
 
-        IdentifiedProcess seperates the actual process being closed, from the
+        IdentifiedProcess separates the actual process being closed, from the
         wrapper of the process and all its things to be closed.
         """
         # Increment number of attempts sent to child to close. #? How do we handle if connection is closed from parent end?
@@ -337,7 +337,7 @@ class VHFPool:
             try:
                 record = self.rq_thread_queue.get(timeout=0.01)
                 if record == HUP:
-                    self.logger.info("[Requeuer] HUP recieved!")
+                    self.logger.info("[Requeuer] HUP received!")
                     # We leave the original thread to cleanup all children.
                     self.rq_thread_active = False
                     break
@@ -369,7 +369,7 @@ class VHFPool:
                         else:
                             # Msg from child has already been consumed!
                             self.logger.warn(
-                                "[Requeuer] Recieved from child=%s, data=%s",
+                                "[Requeuer] Received from child=%s, data=%s",
                                 x, data
                             )
                             self._close_live_child_with_replacement(x)
@@ -377,7 +377,7 @@ class VHFPool:
                     pass
                 except BlockingIOError:
                     self.logger.debug(
-                        "BlockingIOError occured while trying to poll from %s.", x)
+                        "BlockingIOError occurred while trying to poll from %s.", x)
                 except EOFError:
                     self.logger.warning(
                         "EOF Error reached on possibly dead child %s.",
@@ -429,7 +429,7 @@ class VHFPool:
         Returns
         -------
         child: IdentifiedProcess
-            Poll from IdentifiedProcess.connection to assert the recieved
+            Poll from IdentifiedProcess.connection to assert the received
             result is success prior to sending next message.
         """
         # Propagate message to available child.

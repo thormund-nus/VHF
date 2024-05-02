@@ -35,11 +35,11 @@ from VHF.multiprocess.vhf_pool import VHFPool  # noqa
 # Expected Folder Structure:
 # . (Repository Root)
 # ├ VHF (Yet-to-be module for operations of VHF board)
-# | └ multiprocess (collection of code for running experiment in multiprocess)
-# |   └ xyz.py
+# │ └ multiprocess (collection of code for running experiment in multiprocess)
+# │   └ xyz.py
 # └ vhf_func_gen
 #   ├ run_vhf_dep (collection of experiment specific code involving func gen)
-#   | └ xyz.py
+#   │ └ xyz.py
 #   ├ obtainPhaseWithIncreasingVoltage.py (This file)
 #   └ VHF_FuncGen_params.ini (Specified in a variable in main())
 

@@ -57,7 +57,7 @@ def get_files(init_dir: bytes | str, multiple: bool = True,
             except ModuleNotFoundError:
                 pass
             except KeyboardInterrupt:
-                logger.info("Recieved Keyboard Interrupt.")
+                logger.info("Received Keyboard Interrupt.")
                 sys.exit(0)
             except Exception as e:
                 logger.error("get_files_portal - Exception encountered: %s", e)
@@ -70,7 +70,7 @@ def get_files(init_dir: bytes | str, multiple: bool = True,
             # convert to Path
             return _cast_to_path(results)
         except KeyboardInterrupt:
-            logger.info("Recieved Keyboard Interrupt.")
+            logger.info("Received Keyboard Interrupt.")
             sys.exit(0)
         except Exception as e:
             logger.error(
@@ -83,7 +83,7 @@ def get_files(init_dir: bytes | str, multiple: bool = True,
         except ModuleNotFoundError:
             pass
         except KeyboardInterrupt:
-            logger.info("Recieved Keyboard Interrupt.")
+            logger.info("Received Keyboard Interrupt.")
             sys.exit(0)
         except Exception as e:
             logger.error(
@@ -120,7 +120,7 @@ def user_input_bool(prompt: str) -> bool:
         try:
             my_input = input(f"{prompt} \x1B[31m(y/n)\x1B[39m: ")
         except KeyboardInterrupt:
-            print("\nKeyboard Interrupt recieved. Exiting.")
+            print("\nKeyboard Interrupt received. Exiting.")
             sys.exit(0)
 
         try:
@@ -152,7 +152,7 @@ def user_input_bool_force(prompt: str, default: bool = False) -> bool:
     try:
         my_input = input(f"{prompt} \x1B[41m(y/n)\x1B[49m: ")
     except KeyboardInterrupt:
-        print("\nKeyboard Interrupt recieved. Exiting.")
+        print("\nKeyboard Interrupt received. Exiting.")
         sys.exit(0)
 
     try:

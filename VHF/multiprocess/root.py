@@ -37,7 +37,7 @@ class IdentifiedProcess:
         The parent end of the connection used to talk to (child) process.
     child_connection: Connection
         The child end of the connection. This might be necessary to close due
-        to https://stackoverflow.com/q/71532034. Further traige if memleaks in
+        to https://stackoverflow.com/q/71532034. Further triage if memleaks in
         the future becomes severe would be necessary.
     init_timeout: float
         Time (in seconds) given to child class to return back something before
@@ -114,11 +114,11 @@ class IdentifiedProcess:
         if self.connection.poll(init_timeout):
             retval = self.connection.recv()
         else:
-            raise ValueError("Failed to recieve initialisation status.")
+            raise ValueError("Failed to receive initialisation status.")
         self.logger.debug("retval = %s", retval)
         if type(retval) != tuple or len(retval) != 2:
             raise ValueError(
-                f"Unknown initialisation state recieved from {self._process}")
+                f"Unknown initialisation state received from {self._process}")
         if retval[0] != 0:
             raise ValueError(f"{self._process} initialised with errors.")
         self.pid = retval[1]
@@ -182,7 +182,7 @@ class IdentifiedProcess:
         self.logger.info("Trying to join process")
         if not self._to_close:
             # First time trying to close child process.
-            # close pipe on child end without gurantee
+            # close pipe on child end without guarantee
             try:
                 self._connection.send(HUP)  # This is be specification
                 # close pipe from root(parent) end

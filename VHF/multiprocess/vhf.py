@@ -178,7 +178,7 @@ class genericVHF(metaclass=ABCMeta):
                     f"Process returned with error code {exc.returncode}")
             return False
         # else:
-        # No error occured during sampling
+        # No error occurred during sampling
         # Everything here and lower needs  to move to core_loop
         #     self.parse_data()
         #     self.write_to_collated()
@@ -205,7 +205,7 @@ class genericVHF(metaclass=ABCMeta):
         except FileNotFoundError:
             self.logger.warning("Deleted File was not in tmp dir.")
         except Exception as e:
-            self.logger.error("Exception encounterd: %s", e)
+            self.logger.error("Exception encountered: %s", e)
             self.logger.error("", exc_info=True)
 
         self._tmpName = None
@@ -244,7 +244,7 @@ class genericVHF(metaclass=ABCMeta):
     def main_func(self):
         """Awaits and acts on instructions from root process.
 
-        We create the protocol where child processes recieves all messages
+        We create the protocol where child processes receives all messages
         within tuples. data = (action, _).
         1. data = cont(p: mapping, npz_loc: tuple)
             Signals to continue sampling once.
@@ -265,10 +265,10 @@ class genericVHF(metaclass=ABCMeta):
             Generic error. Possible situations:
             a. Tempfile created could not be opened, and file from NAS could
             also not be found.
-            Please queue into available child processes upon recieving this,
+            Please queue into available child processes upon receiving this,
             unless otherwise desired.
         3. ChildSignals.action_hup:
-            Recieved SIGINT. Propagate up.
+            Received SIGINT. Propagate up.
         4. ChildSignals.too_many_attempts:
             Repeated failed attempts to sample data.
             Root process is to decide if to close all sibling processes and
@@ -299,7 +299,7 @@ class genericVHF(metaclass=ABCMeta):
         try:
             # This step is blocking until self.comm receives
             while (data := self.comm.recv()):
-                self.logger.debug("Recieved %s", data)
+                self.logger.debug("Received %s", data)
                 action = data[0]
                 match action:
                     case signal.action_cont:  # yet to use signal.is_cont method
@@ -353,17 +353,17 @@ class genericVHF(metaclass=ABCMeta):
                             self.comm.send_bytes(c_sig.action_request_requeue)
 
                     case signal.action_hup:
-                        self.logger.info("Recieved closing signal.")
+                        self.logger.info("Received closing signal.")
                         self.close()
 
                     case _:
-                        self.logger.warning("Unknown message recieved!")
+                        self.logger.warning("Unknown message received!")
                         self.exit_code = 1
                         self.close()
 
         except KeyboardInterrupt:
             self.logger.warn(
-                "Recieved KeyboardInterrupt Signal! Attempting to propagate shutdown gracefully.")
+                "Received KeyboardInterrupt Signal! Attempting to propagate shutdown gracefully.")
             self.comm.send(c_sig.action_hup)
             self.close()
 
@@ -391,7 +391,7 @@ class genericVHF(metaclass=ABCMeta):
     def conf(self) -> ConfigParser:
         """ConfigParser object to be implemented by concrete implementation.
 
-        This is preferrably created in a conf_parse routine during init.
+        This is preferably created in a conf_parse routine during init.
         """
         raise NotImplementedError
 
@@ -399,6 +399,6 @@ class genericVHF(metaclass=ABCMeta):
     def save_dir(self) -> Path:
         """Directory which trace files will be permanently saved to.
 
-        This is preferrably created in a conf_parse routine during init.
+        This is preferably created in a conf_parse routine during init.
         """
         raise NotImplementedError
