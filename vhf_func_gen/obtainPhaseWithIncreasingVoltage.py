@@ -255,8 +255,8 @@ def main():
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
     filehandler = logging.FileHandler(
-        filename=str(Path(__file__).parents[1].joinpath("Log")
-                     .joinpath(f"test_PoolIntegrated_{datetime.now().strftime('%Y%m%d_%H:%M:%S')}.log"))
+        filename=str(Path(__file__).parent.joinpath("Log")
+                     .joinpath(f"VHF_rAgainstVpp_{datetime.now().strftime('%Y%m%d_%H:%M:%S')}.log"))
     )
     filehandler.setLevel(logging.DEBUG)
     streamhandler = logging.StreamHandler(sys.stdout)
