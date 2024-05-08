@@ -199,7 +199,7 @@ class VHFparser:
     Init-time available properties
     -----
     filesize: Number of bytes
-    header: Dictionary containing all paramaters used to call runVHF
+    header: Dictionary containing all parameters used to call runVHF
 
     Available methods
     -----
@@ -250,22 +250,7 @@ class VHFparser:
             print("No file-like/buffer object given to init.")
             return
 
-        # init: Populate body "data" to within (start_time, end_time)
-        # Available data in file in contrast to header['s']'s expected
-        # file-length in the event that sampling
         max_data_size = int((self.filesize - self._num_head_bytes) / 8)
-        if end_time is not None:
-            # cast both to offset-aware if either times are
-            if (self._datetime_aware(end_time)
-                    ^ self._datetime_aware(self.header["Time start"])):
-                end_time, self.header["Time start"] = self._coerce_dt_aware(
-                    end_time, self.header["Time start"])
-            target_diff = end_time - self.header["Time start"]
-            # ensure to invoke only file is exceeds time argument bounds
-            if (t_diff_s := target_diff.total_seconds()) > 0:
-                max_data_size = int((
-                    t_diff_s * self.header["sampling freq"])
-                )
 
         # now read to right boundary of file
         self.data = np.memmap(
@@ -275,19 +260,6 @@ class VHFparser:
             offset=self._num_head_bytes,
             shape=(max_data_size,),
         )
-
-        # shape has trimmed all data after end_time, _drop_left to trim before
-        # start_time, which can only be done after obtaining (I, Q, M)
-        if start_time is not None:
-            if (self._datetime_aware(start_time)
-                    ^ self._datetime_aware(self.header["Time start"])):
-                start_time, self.header["Time start"] = self._coerce_dt_aware(
-                    start_time, self.header["Time start"]
-                )
-            target_diff = start_time - self.header["Time start"]
-
-            if (t_diff_s := target_diff.total_seconds()) > 0:
-                self._drop_left(int(t_diff_s * self.header["sampling freq"]))
 
         # init: get (I, Q, M)
         self.read_words_numpy(self.data)
@@ -318,12 +290,13 @@ class VHFparser:
 
         # in accordance with convert_bin_to_text.c
         header_count_b = (int.from_bytes(header, "little") & 0xFFFF) - 1
-        # in teststream.c (SVN v17), 1 + i lines(8 bytes) were written (see line
-        # 353), where i was (magic mask + 1). we note that due to improper null
-        # termination of headerbuffer (in line 352) meant that teststream.c was
-        # reading beyond buffer, which was not guranteed to be all 0s.
-        # Nonetheless, consume it as header in accordance with masked magic
-        # number and dump away. As such, stripping supposed 0s are ok.
+        # in teststream.c (SVN v17), 1 + i lines(8 bytes) were written (see
+        # line 353), where i was (magic mask + 1). we note that due to improper
+        # null termination of headerbuffer (in line 352) meant that
+        # teststream.c was reading beyond buffer, which was not guaranteed to
+        # be all 0s. Nonetheless, consume it as header in accordance with
+        # masked magic number and dump away. As such, stripping supposed 0s are
+        # ok.
         # -----
         # + 1 to read one more byte than spec (convert_bin_to_text.c)
         header_count = (header_count_b+1) * 8
@@ -331,52 +304,6 @@ class VHFparser:
         self.headerraw: bytes = buffer.read(header_count)
         self.headerraw = self.headerraw.rstrip(b"\x00")
         self.parse_header(self.headerraw)
-
-    def _drop_left(self, val: int):
-        """Mutates self.data and derivatives by dropping val number of points.
-
-        Timing information is correspondingly updated.
-        """
-        try:
-            val = int(val)
-        except TypeError:
-            raise ValueError(f"{val = } given could not be cast to int!")
-        if val == 0:
-            # Nothing to do
-            return
-        elif val < 0:
-            raise ValueError(f"{val = } given is too small!")
-
-        self.header["Time start"] += timedelta(
-            seconds=(val / self.header["sampling freq"]))
-        self.data = self.data[val:]
-
-    def _datetime_aware(self, dt: datetime) -> bool:
-        """Determine if a datetime object is aware, or otherwise (naive)."""
-        # doc: https://docs.python.org/3/library/datetime.html#determining-if-an-object-is-aware-or-naive # noqa: E501
-        # Resorts to False and undefined -> False
-        return dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) is not None
-
-    def _coerce_dt_aware(self, dt1: datetime,
-                         dt2: datetime) -> tuple[datetime, datetime]:
-        """Coerces one datetime object to be aware like the other object.
-
-        Datetime objects are not orderable if exclusively one is 'aware'.
-        The naive object is forced to inherit the aware datetime object tzinfo.
-        """
-        if not (self._datetime_aware(dt1) ^ self._datetime_aware(dt2)):
-            # No coercion required
-            return dt1, dt2
-
-        # determine which to convert, and inherit timeone from the other
-        if self._datetime_aware(dt1):
-            dt2 = dt2.astimezone(dt1.tzinfo)
-        elif self._datetime_aware(dt2):
-            dt1 = dt1.astimezone(dt2.tzinfo)
-        else:
-            # Logical error
-            raise NotImplementedError
-        return dt1, dt2
 
     # def read_word(self, b: bytes, idx=int):
     #     """converts 8 bytes in (I, Q, M)."""
@@ -434,7 +361,7 @@ class VHFparser:
         # init
         self.header: dict = dict()
         header_raw: list[bytes] = header_raw.split(b"# ")[1:]
-        self.logger.debug("parsed_header recieved header_raw = %s", header_raw)
+        self.logger.debug("parsed_header received header_raw = %s", header_raw)
         # populate self.header from command line
         func_cmd_line = lambda x: "command line: " in x.decode()
         for header_line in filter(func_cmd_line, header_raw):
@@ -477,7 +404,7 @@ class VHFparser:
             self.header["base sampling freq"] = 20e6
         else:
             self.logger.warning(
-                "Sampling frequency was not explictly given in header. "
+                "Sampling frequency was not explicitly given in header. "
                 "Defaulting to 20 MHz.")
             self.header["base sampling freq"] = 20e6
 
@@ -490,7 +417,7 @@ class VHFparser:
     @cached_property
     def _potential_m_overflow(self) -> bool:
         """Determine if elements in self.m_arr close exceeds +-tol."""
-        # Used to calibrate invokation of _m_fix()
+        # Used to calibrate invocation of _m_fix()
         tol: int = 0x7F00
         if tol < 0:
             raise ValueError
