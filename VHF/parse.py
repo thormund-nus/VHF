@@ -305,53 +305,6 @@ class VHFparser:
         self.headerraw = self.headerraw.rstrip(b"\x00")
         self.parse_header(self.headerraw)
 
-    # def read_word(self, b: bytes, idx=int):
-    #     """converts 8 bytes in (I, Q, M)."""
-    #     m = struct.unpack_from('<h', b, 6)[0]
-    #     i = struct.unpack_from('<i', b, 2)[0] >> 8
-    #     # i = struct.unpack_from('<i', b, 3)[0] & 0xffffff
-    #     q = struct.unpack_from('<i', b, 0)[0] & 0xffffff
-    #
-    #     sign_extend = -1 & ~0x7fffff
-    #     if i & 0x800000:
-    #         i |= sign_extend
-    #     # i = i - (i >> 23) * 2**24 # branchless
-    #     if q & 0x800000:
-    #         q |= sign_extend
-    #
-    #     # substitute for non-local variable
-    #     self.m_arr[idx] = m
-    #     self.i_arr[idx] = i
-    #     self.q_arr[idx] = q
-
-    def read_words_numpy(self, data: np.ndarray, fix_m: bool = False):
-        """Convert binary words into numpy arrays.
-
-        Input
-        -----
-        data: np.ndarray
-            This contains numpy binary data that contains 1 word of data
-            per array element.
-        fix_m: bool
-            Accounts for 16-bit overflow of m during reading.
-        """
-        self.i_arr = np.bitwise_and(
-            np.right_shift(data, 24), 0xFFFFFF, dtype=np.dtype(np.int32)
-        )
-        self.i_arr = self.i_arr - (self.i_arr >> 23) * 2**24
-        self.q_arr = np.bitwise_and(data, 0xFFFFFF, dtype=np.dtype(np.int32))
-        self.q_arr = self.q_arr - (self.q_arr >> 23) * 2**24
-        self.m_arr = np.right_shift(data, 48, dtype=np.dtype(np.int64))
-        # self.m_arr = self._m_arr_copy.astype(np.int16)
-
-        # failed alternative to m_arr creation
-        # self.m_arr.dtype = np.int16 # in-place data change, may be depreciated
-        # ? setting the dtype seems to be as buggy as ndarray.view() method
-        # this is in contrast to ndarray.astype() method, which returns a copy
-
-        if fix_m:
-            self._fix_overflow_m()
-
     def parse_header(self, header_raw: bytes):
         """Convert binary file header into a header property."""
         if header_raw is None:
@@ -413,6 +366,53 @@ class VHFparser:
                                             / (1 + self.header["s"]))
         else:
             self.header["sampling freq"] = self.header["base sampling freq"]
+
+    # def read_word(self, b: bytes, idx=int):
+    #     """converts 8 bytes in (I, Q, M)."""
+    #     m = struct.unpack_from('<h', b, 6)[0]
+    #     i = struct.unpack_from('<i', b, 2)[0] >> 8
+    #     # i = struct.unpack_from('<i', b, 3)[0] & 0xffffff
+    #     q = struct.unpack_from('<i', b, 0)[0] & 0xffffff
+    #
+    #     sign_extend = -1 & ~0x7fffff
+    #     if i & 0x800000:
+    #         i |= sign_extend
+    #     # i = i - (i >> 23) * 2**24 # branchless
+    #     if q & 0x800000:
+    #         q |= sign_extend
+    #
+    #     # substitute for non-local variable
+    #     self.m_arr[idx] = m
+    #     self.i_arr[idx] = i
+    #     self.q_arr[idx] = q
+
+    def read_words_numpy(self, data: np.ndarray, fix_m: bool = False):
+        """Convert binary words into numpy arrays.
+
+        Input
+        -----
+        data: np.ndarray
+            This contains numpy binary data that contains 1 word of data
+            per array element.
+        fix_m: bool
+            Accounts for 16-bit overflow of m during reading.
+        """
+        self.i_arr = np.bitwise_and(
+            np.right_shift(data, 24), 0xFFFFFF, dtype=np.dtype(np.int32)
+        )
+        self.i_arr = self.i_arr - (self.i_arr >> 23) * 2**24
+        self.q_arr = np.bitwise_and(data, 0xFFFFFF, dtype=np.dtype(np.int32))
+        self.q_arr = self.q_arr - (self.q_arr >> 23) * 2**24
+        self.m_arr = np.right_shift(data, 48, dtype=np.dtype(np.int64))
+        # self.m_arr = self._m_arr_copy.astype(np.int16)
+
+        # failed alternative to m_arr creation
+        # self.m_arr.dtype = np.int16 # in-place data change, may be depreciated
+        # ? setting the dtype seems to be as buggy as ndarray.view() method
+        # this is in contrast to ndarray.astype() method, which returns a copy
+
+        if fix_m:
+            self._fix_overflow_m()
 
     @cached_property
     def _potential_m_overflow(self) -> bool:
