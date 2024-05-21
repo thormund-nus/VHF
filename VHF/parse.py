@@ -12,6 +12,38 @@ __all__ = [
 ]
 
 
+class BinaryVHFTrace:
+    """Collection of methods for parsing binary data out of VHF trace.
+
+    Binary trace data is a contiguous binary array that is interpreted a word
+    at a time. Each word is 8 bytes, intended to be unpacked as (I, Q, M).
+    """
+
+    bytes_per_word: int = 8
+
+    @staticmethod
+    def read_i_arr(trace: npt.NDArray[np.uint64]) -> npt.NDArray[np.int32]:
+        """Gets the I portion of a word."""
+        i_arr = np.bitwise_and(
+            np.right_shift(trace, 24), 0xFFFFFF, dtype=np.dtype(np.int32)
+        )
+        i_arr = i_arr - (i_arr >> 23) * 2**24
+        return i_arr
+
+    @staticmethod
+    def read_q_arr(trace: npt.NDArray[np.uint64]) -> npt.NDArray[np.int32]:
+        """Gets the Q portion of a word."""
+        q_arr = np.bitwise_and(trace, 0xFFFFFF, dtype=np.dtype(np.int32))
+        q_arr = q_arr - (q_arr >> 23) * 2**24
+        return q_arr
+
+    @staticmethod
+    def read_m_arr(trace: npt.NDArray[np.uint64]) -> npt.NDArray[np.int64]:
+        """Gets the M portion of a word."""
+        # is it safe to lower the space of this?
+        return np.right_shift(trace, 48, dtype=np.dtype(np.int64))
+
+
 class TraceTimer:
     """Timing and index management for VHF parser."""
 
@@ -397,19 +429,9 @@ class VHFparser:
         fix_m: bool
             Accounts for 16-bit overflow of m during reading.
         """
-        self.i_arr = np.bitwise_and(
-            np.right_shift(data, 24), 0xFFFFFF, dtype=np.dtype(np.int32)
-        )
-        self.i_arr = self.i_arr - (self.i_arr >> 23) * 2**24
-        self.q_arr = np.bitwise_and(data, 0xFFFFFF, dtype=np.dtype(np.int32))
-        self.q_arr = self.q_arr - (self.q_arr >> 23) * 2**24
-        self.m_arr = np.right_shift(data, 48, dtype=np.dtype(np.int64))
-        # self.m_arr = self._m_arr_copy.astype(np.int16)
-
-        # failed alternative to m_arr creation
-        # self.m_arr.dtype = np.int16 # in-place data change, may be depreciated
-        # ? setting the dtype seems to be as buggy as ndarray.view() method
-        # this is in contrast to ndarray.astype() method, which returns a copy
+        self.i_arr: npt.NDArray[np.int32] = BinaryVHFTrace.read_i_arr(data)
+        self.q_arr: npt.NDArray[np.int32] = BinaryVHFTrace.read_q_arr(data)
+        self.m_arr: npt.NDArray[np.int64] = BinaryVHFTrace.read_m_arr(data)
 
         if fix_m:
             self._fix_overflow_m()
