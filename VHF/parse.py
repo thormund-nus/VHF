@@ -2,7 +2,8 @@ from datetime import datetime
 from datetime import timedelta
 from functools import cached_property
 import logging
-from typing import Optional
+from typing import Iterator, Optional
+import math
 import numpy as np
 import numpy.typing as npt
 import os
@@ -349,7 +350,7 @@ class VHFparser:
 
     Init-time available properties
     -----
-    filesize: Number of bytes
+    filesize: Number of bytes to end of file buffer.
     header: Dictionary containing all parameters used to call runVHF
 
     Available methods
@@ -374,17 +375,40 @@ class VHFparser:
         # filesize: bytes -
         #     length of data + header
         # _num_head_bytes: mutable, bytes -
-        #     aims to show number of bytes of header read
-
-        # init guard: parse time params
-        if start_time is not None:
-            assert isinstance(start_time, datetime)
-        if end_time is not None:
-            assert isinstance(end_time, datetime)
+        #     Number of bytes associated to header.
+        # _bytes_per_word: int
+        #     We think of the file as being
+        #          [header[0] header[1] ... trace[0] ...]
+        #     with each element being of equal size. The size is specified
+        #     in this variable. This has to be mutated or changed in the case
+        #     of ASCII parsing to utilise newline breaks instead.
+        # _fix_m_called: Optional[bool] -
+        #     notifies if self.m_arr has been shifted by 16 bit as necessary
+        #     for the given memmap window, as the specified TraceTimer only
+        #     pulls out the raw data representation for the specified Plot
+        #     Window.
+        #     Resetting to false is necessary every time a new Plot Window is
+        #     requested.
+        # _m_mgr_obtained: bool
+        #     Single use after headers_only guard clause. Determines if _m_mgr
+        #     has been generated. This helps validate the case where _m_mgr is
+        #     rightfully None, as Options[T] is not a Python thing.
+        # _m_mgr: Optional[ManifoldRollover]
+        #     Sparse array generated from trace data, depicting the offset (in
+        #     multiples of 1<<16) that needs to be applied to self.m_array. As
+        #     such, this is 0-indexed relative to trace data, and necessary
+        #     offset is necessary for new plot window leading up to getting the
+        #     phase for new plot window. In other words, plot windows derive
+        #     m-offset overflow from this variable.
 
         # Create class specific modifiers
         self._num_head_bytes = 0
         self._fix_m_called = False
+        self._m_mgr_obtained: bool = False
+        self._m_mgr: Optional[ManifoldRollover] = None  # This contains the
+        # sparse representation of necessary to not multiply reparse all of
+        # m-array again to determine how much m-offset is necessary for
+        # arbitrary window.
 
         # init: Begin Parsing logic, populating header
         if isinstance(filename, BufferedRandom):
@@ -520,24 +544,43 @@ class VHFparser:
         else:
             self.header["sampling freq"] = self.header["base sampling freq"]
 
-    # def read_word(self, b: bytes, idx=int):
-    #     """converts 8 bytes in (I, Q, M)."""
-    #     m = struct.unpack_from('<h', b, 6)[0]
-    #     i = struct.unpack_from('<i', b, 2)[0] >> 8
-    #     # i = struct.unpack_from('<i', b, 3)[0] & 0xffffff
-    #     q = struct.unpack_from('<i', b, 0)[0] & 0xffffff
-    #
-    #     sign_extend = -1 & ~0x7fffff
-    #     if i & 0x800000:
-    #         i |= sign_extend
-    #     # i = i - (i >> 23) * 2**24 # branchless
-    #     if q & 0x800000:
-    #         q |= sign_extend
-    #
-    #     # substitute for non-local variable
-    #     self.m_arr[idx] = m
-    #     self.i_arr[idx] = i
-    #     self.q_arr[idx] = q
+    # Collection of methods necessary for post-header, pre-trace processing
+    # prior to data processing, such as obtaining sparse_m_delta.
+    def _all_trace(self, bsize=200_000) -> Iterator[npt.NDArray[np.uint64]]:
+        """Generates array containing entire trace data. Do not cache.
+
+        This is particularly necessary for doing a pre-processing in
+        determining overflow m_arr.
+        """
+        # bsize = 200_000  # 200k * 64 bits ~ 1.6MiB
+        w: int = math.ceil(self.timings.duration_idx / bsize) - 1
+        for i in range(w+1):
+            s = (bsize,) if i != w else (self.timings.duration_idx
+                                         - w * bsize,)
+            yield np.memmap(
+                self._filename,
+                dtype=np.dtype(np.uint64).newbyteorder("<"),
+                mode="r",
+                offset=self._num_head_bytes + i * bsize * self._bytes_per_word,
+                shape=s,
+            )
+
+    def _obtain_m_deltas(self):
+        """Populate _sparse_m with (index, np.diff)."""
+        if self._m_mgr_obtained:
+            self.logger.warning("m_mgr obj was parsed prior. Skipping.")
+            return
+        self.logger.debug("Running _obtain_m_deltas.")
+
+        result = ManifoldRollover(block_size := 2**17)
+        for trace_block in self._all_trace(block_size):
+            result.update(trace_block)
+
+        # wrap up
+        result.lock()
+        self._m_mgr_obtained = True
+        if result.sparse_m_delta_idx.size > 0:
+            self._m_mgr = result
 
     def read_words_numpy(self, data: np.ndarray, fix_m: bool = False):
         """Convert binary words into numpy arrays.
