@@ -4,6 +4,7 @@ from functools import cached_property
 import logging
 from typing import Optional
 import numpy as np
+import numpy.typing as npt
 import os
 from _io import BufferedRandom
 
@@ -213,6 +214,122 @@ class TraceTimer:
         """Duration index specifying number of bytes to read."""
         delta = self.plot_end - self.plot_start
         return int(delta/self.sample_interval)
+
+
+class ManifoldRollover:
+    """Double-pass of trace's manifold rollover manager.
+
+    For better memory management, we never intended on reading the entire file
+    at once. However this meant that there is a need for a double pass on the
+    entire trace data set, to then determine if there has been any
+    "manifold"(m)-rollovers that might occur before the existing plot window
+    that has to be accounted for.
+
+    Run-time Methods
+    -----
+    update: Keeps track of overflows with successive blocks of trace's m_arr.
+    lock: Blocks any more use of update, allows for use of populated fix_m_arr.
+    """
+
+    def __init__(self, trace_block_size: int):
+        """Creates empty state of ManifoldRollover.
+
+        The empty/base case state of ManfioldRollever is the state associated
+        with Trace Data that has no manifold rollover.
+        """
+        self.__create_logger()
+        self._lock: bool = False  # Toggles btwn receiving trc data and else
+
+        # Variables needed in self._update
+        self._ptl_overflow = BinaryVHFTrace.potential_m_overflow_tolerance
+        self._trace_blk_id: int = -1
+        self._prev_trc_last_m: Optional[np.int64] = None
+        self._blk_size = trace_block_size
+
+        # This stores the number of times to displace the plot upwards due to
+        # packing into i16.
+        self.sparse_m_delta: npt.NDArray[np.int16]
+        self._list_m_delta: list[np.int16] = []
+        # This is the associated index along the trace where m_delta occurs.
+        # Ideally, we should be using usize (from Rust).
+        self.sparse_m_delta_idx: npt.NDArray[np.uint64]
+        self._list_m_delta_idx: list[np.uint64] = []
+        self.logger.info("Initialization completed.")
+
+    def __create_logger(self):
+        self.logger = logging.getLogger("manifoldmanager")
+
+    def lock(self):
+        """Conclude firstpass of trace, locking in state of ManifoldRollover.
+
+        This transits the behaviour of ManifoldRollover from consuming trace
+        (in arbitrary sized chunks) to being able to give well-formed output.
+        """
+        if self._lock:
+            self.logger.warning("Manifold Management has already been locked!")
+            return
+
+        self._lock = True
+        self.sparse_m_delta = np.array(self._list_m_delta, dtype=np.int16)
+        self.sparse_m_delta_idx = np.array(self._list_m_delta_idx, dtype=np.uint64)
+        del self._list_m_delta
+        del self._list_m_delta_idx
+        self.logger.info("Locked and created sparse repr.")
+
+    def _potential_overflow(self, m_block: npt.NDArray[np.int64]) -> bool:
+        """Determines is a block of m_arr might require delta-obtaining."""
+        if (np.size(np.where(m_block > self._ptl_overflow))
+                + np.size(np.where(m_block < -self._ptl_overflow))) > 0:
+            return True
+        return False
+
+    def _rollover_lemma(self, d_block: float | npt.NDArray[np.int64]):
+        """Gets (idx, roll-over) for diff_block."""
+        diff_overflow = BinaryVHFTrace.actual_m_overflow
+        deltas = (np.greater(d_block, diff_overflow).astype(int)
+                  - np.less(d_block, -diff_overflow).astype(int))
+        idx = np.ravel(np.argwhere(deltas))  # assumes 1D
+        rollover = deltas[idx]
+        idx = idx + self._trace_blk_id * self._blk_size
+        return idx, rollover
+
+    def update(self, trace_block: npt.NDArray[np.uint64]):
+        """Consume a chunk of trace.
+
+        Takes in all chunks of entire trace file to then build up a
+        representation of "manifold"(m)-rollover.
+        """
+        if trace_block.size < 1:
+            self.logger.warning("Empty trace_block received in update!")
+            return
+
+        self._trace_blk_id += 1
+        m_block: npt.NDArray[np.int64] = BinaryVHFTrace.read_m_arr(trace_block)
+        last_m: np.int64 = m_block[-1]
+
+        # We first perform the np.diff for the self._trace_blk_id > 1 case:
+        x = None
+        if self._prev_trc_last_m is not None:
+            x = m_block[0] - self._prev_trc_last_m
+        # Populate the np.diff for the given block
+        if x is not None:
+            diff_offset = 1
+            diff = np.zeros_like(m_block, dtype=np.int64)
+            diff[0] = x
+        else:
+            diff_offset = 0
+            diff = np.zeros((m_block.size-1,), dtype=np.int64)
+        if self._potential_overflow(m_block):  # Perform only if necessary
+            diff[diff_offset:] = np.diff(m_block)
+            # Next, get indices and rollover direction
+            idx, deltas = self._rollover_lemma(diff)
+
+            # Place into spare list
+            self._list_m_delta.extend(deltas)
+            self._list_m_delta_idx.extend(idx)
+
+        # End the loop
+        self._prev_trc_last_m = last_m
 
 
 class VHFparser:
