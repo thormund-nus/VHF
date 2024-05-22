@@ -21,6 +21,8 @@ class BinaryVHFTrace:
     """
 
     bytes_per_word: int = 8
+    potential_m_overflow_tolerance: int = 0x7F00  # m = int16 => max - min = 0xFFFF
+    actual_m_overflow: int = 0xF000  # trc[i+1] - trc[i] > THIS counts as overflowing
 
     @staticmethod
     def read_i_arr(trace: npt.NDArray[np.uint64]) -> npt.NDArray[np.int32]:
@@ -423,7 +425,8 @@ class VHFparser:
 
     def _init_buffer(self, buffer):
         """For bufferedRandom."""
-        header = buffer.read(8)
+        MGC_HEADER_LEN = 8
+        header = buffer.read(MGC_HEADER_LEN)
         actual = (0xFFFFFFFFFFFF0000 & int.from_bytes(header, "little"))
         expected = 0x123456ABCDEF0000
         if actual != expected:
@@ -432,7 +435,7 @@ class VHFparser:
             self.logger.debug("buffer.tell() = %s", buffer.tell())
             self.logger.debug(
                 "Buffer read(1024): %s", header +
-                buffer.read(min(1024, self.filesize-8))
+                buffer.read(min(1024, self.filesize-MGC_HEADER_LEN))
             )
             raise ValueError(
                 "Buffer does not conform to header expectations.")
@@ -448,7 +451,8 @@ class VHFparser:
         # ok.
         # -----
         # + 1 to read one more byte than spec (convert_bin_to_text.c)
-        header_count = (header_count_b+1) * 8
+        self._bytes_per_word = BinaryVHFTrace.bytes_per_word
+        header_count = (header_count_b+1) * self._bytes_per_word
         self._num_head_bytes += header_count  # this is the claimed headersize
         self.headerraw: bytes = buffer.read(header_count)
         self.headerraw = self.headerraw.rstrip(b"\x00")
