@@ -7,7 +7,7 @@ import math
 import numpy as np
 import numpy.typing as npt
 import os
-from _io import BufferedRandom
+from io import BufferedRandom
 
 __all__ = [
     "VHFparser",
@@ -372,6 +372,8 @@ class VHFparser:
         self.logger.info('VHF parser has been run for file: %s', filename)
 
         # attributes:
+        # _filename: BufferedRandom | filelike -
+        #     data buffer / location of data
         # filesize: bytes -
         #     length of data + header
         # _num_head_bytes: mutable, bytes -
@@ -402,6 +404,7 @@ class VHFparser:
         #     m-offset overflow from this variable.
 
         # Create class specific modifiers
+        self._filename = filename
         self._num_head_bytes = 0
         self._fix_m_called = False
         self._m_mgr_obtained: bool = False
@@ -413,13 +416,15 @@ class VHFparser:
         # init: Begin Parsing logic, populating header
         if isinstance(filename, BufferedRandom):
             self.logger.debug("Obtained Buffered Random object")
+            # assumes pointer at EOF, might not be platform-agnostic
+            # filename.seek(0, os.SEEK_END)
             self.filesize = filename.tell()
             filename.seek(0)
             self._init_buffer(filename)
-        elif isinstance(filename, str) or isinstance(filename, os.PathLike):
+        elif isinstance(self._filename, (str, os.PathLike)):
             self.logger.debug("Obtained File-like object")
-            self.filesize = os.path.getsize(filename)  # number of bytes
-            self._init_file(filename)
+            self.filesize = os.path.getsize(self._filename)  # number of bytes
+            self._init_file(self._filename)
         else:
             self.logger.warning("No file-like/buffer object given to init.")
             print("No file-like/buffer object given to init.")
