@@ -489,7 +489,7 @@ class VHFparser:
 
     def parse_header(self, header_raw: bytes):
         """Convert binary file header into a header property."""
-        if header_raw is None:
+        if header_raw is None or header_raw == b'':
             self.logger.error("parse_header invoked with empty argument: header_raw")
             raise ValueError("header_raw was not given.")
 
@@ -518,8 +518,8 @@ class VHFparser:
             except StopIteration:
                 pass
             except Exception as e:
-                self.logger.warn("Error obtained trying to obtain next on filter obtaining `recording start`")
-                self.logger.warn("Exception: %s", e)
+                self.logger.error("Exception encountered: %s", e)
+                self.logger.error("", exc_info=True)
         else:
             self.logger.warn("Command date and time could not be found within header. Attempting to obtain date and time from filename.")
             # TODO: obtain from filename.
