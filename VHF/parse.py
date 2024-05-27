@@ -5,7 +5,7 @@ import logging
 from typing import Iterator, Optional
 import math
 import numpy as np
-import numpy.typing as npt
+from numpy.typing import NDArray
 import os
 from io import BufferedRandom
 
@@ -20,32 +20,43 @@ class BinaryVHFTrace:
     Binary trace data is a contiguous binary array that is interpreted a word
     at a time. Each word is 8 bytes, intended to be unpacked as (I, Q, M).
     """
+    raw_word_type = np.uint64
+    i_arr_type = np.int32
+    q_arr_type = np.int32
+    m_arr_type = np.int64
 
     bytes_per_word: int = 8
     potential_m_overflow_tolerance: int = 0x7F00  # m = int16 => max - min = 0xFFFF
     actual_m_overflow: int = 0xF000  # trc[i+1] - trc[i] > THIS counts as overflowing
 
     @staticmethod
-    def read_i_arr(trace: npt.NDArray[np.uint64]) -> npt.NDArray[np.int32]:
+    def read_i_arr(trace: NDArray[raw_word_type]) -> NDArray[i_arr_type]:
         """Gets the I portion of a word."""
         i_arr = np.bitwise_and(
-            np.right_shift(trace, 24), 0xFFFFFF, dtype=np.dtype(np.int32)
+            np.right_shift(trace, 24), 0xFFFFFF,
+            dtype=np.dtype(BinaryVHFTrace.i_arr_type)
         )
         i_arr = i_arr - (i_arr >> 23) * 2**24
         return i_arr
 
     @staticmethod
-    def read_q_arr(trace: npt.NDArray[np.uint64]) -> npt.NDArray[np.int32]:
+    def read_q_arr(trace: NDArray[raw_word_type]) -> NDArray[q_arr_type]:
         """Gets the Q portion of a word."""
-        q_arr = np.bitwise_and(trace, 0xFFFFFF, dtype=np.dtype(np.int32))
+        q_arr = np.bitwise_and(
+            trace, 0xFFFFFF,
+            dtype=np.dtype(BinaryVHFTrace.q_arr_type)
+        )
         q_arr = q_arr - (q_arr >> 23) * 2**24
         return q_arr
 
     @staticmethod
-    def read_m_arr(trace: npt.NDArray[np.uint64]) -> npt.NDArray[np.int64]:
+    def read_m_arr(trace: NDArray[raw_word_type]) -> NDArray[m_arr_type]:
         """Gets the M portion of a word."""
-        # is it safe to lower the space of this?
-        return np.right_shift(trace, 48, dtype=np.dtype(np.int64))
+        # is it safe to lower the size of this?
+        return np.right_shift(
+            trace, 48,
+            dtype=np.dtype(BinaryVHFTrace.m_arr_type)
+        )
 
 
 class TraceTimer:
@@ -246,17 +257,17 @@ class ManifoldRollover:
         # Variables needed in self._update
         self._ptl_overflow = BinaryVHFTrace.potential_m_overflow_tolerance
         self._trace_blk_id: int = -1
-        self._prev_trc_last_m: Optional[np.int64] = None
+        self._prev_trc_last_m: Optional[BinaryVHFTrace.m_arr_type] = None
         self._blk_size = trace_block_size
 
         # This stores the number of times to displace the plot upwards due to
         # packing into i16.
-        self.sparse_m_delta: npt.NDArray[np.int16]
+        self.sparse_m_delta: NDArray[np.int16]
         self._list_m_delta: list[np.int16] = []
         # This is the associated index along the trace where m_delta occurs.
         # Ideally, we should be using usize (from Rust).
-        self.sparse_m_delta_idx: npt.NDArray[np.uint64]
-        self._list_m_delta_idx: list[np.uint64] = []
+        self.sparse_m_delta_idx: NDArray[np.intp]
+        self._list_m_delta_idx: list[np.intp] = []
         self.logger.info("Initialization completed.")
 
     def __create_logger(self):
@@ -274,29 +285,37 @@ class ManifoldRollover:
 
         self._lock = True
         self.sparse_m_delta = np.array(self._list_m_delta, dtype=np.int16)
-        self.sparse_m_delta_idx = np.array(self._list_m_delta_idx, dtype=np.uint64)
+        self.sparse_m_delta_idx = np.array(self._list_m_delta_idx, dtype=np.intp)
         del self._list_m_delta
         del self._list_m_delta_idx
         self.logger.info("Locked and created sparse repr.")
 
-    def _potential_overflow(self, m_block: npt.NDArray[np.int64]) -> bool:
+    def _potential_overflow(
+        self,
+        m_block: NDArray[BinaryVHFTrace.m_arr_type]
+    ) -> bool:
         """Determines is a block of m_arr might require delta-obtaining."""
         if (np.size(np.where(m_block > self._ptl_overflow))
                 + np.size(np.where(m_block < -self._ptl_overflow))) > 0:
             return True
         return False
 
-    def _rollover_lemma(self, d_block: float | npt.NDArray[np.int64]):
+    def _rollover_lemma(
+        self,
+        d_block: BinaryVHFTrace.m_arr_type | NDArray[BinaryVHFTrace.m_arr_type]
+    ) -> tuple[NDArray[np.intp], NDArray[np.int16]]:
         """Gets (idx, roll-over) for diff_block."""
         diff_overflow = BinaryVHFTrace.actual_m_overflow
-        deltas = (np.greater(d_block, diff_overflow).astype(int)
-                  - np.less(d_block, -diff_overflow).astype(int))
+        deltas: NDArray[np.int16] = (
+            np.greater(d_block, diff_overflow).astype(int)
+            - np.less(d_block, -diff_overflow).astype(int)
+        )  # TODO: type casting here needs to be tested better.
         idx = np.ravel(np.argwhere(deltas))  # assumes 1D
-        rollover = deltas[idx]
-        idx = idx + self._trace_blk_id * self._blk_size
+        rollover: NDArray[np.int16] = deltas[idx]
+        idx: NDArray[np.intp] = idx + self._trace_blk_id * self._blk_size
         return idx, rollover
 
-    def update(self, trace_block: npt.NDArray[np.uint64]):
+    def update(self, trace_block: NDArray[BinaryVHFTrace.raw_word_type]):
         """Consume a chunk of trace.
 
         Takes in all chunks of entire trace file to then build up a
@@ -307,8 +326,8 @@ class ManifoldRollover:
             return
 
         self._trace_blk_id += 1
-        m_block: npt.NDArray[np.int64] = BinaryVHFTrace.read_m_arr(trace_block)
-        last_m: np.int64 = m_block[-1]
+        m_block = BinaryVHFTrace.read_m_arr(trace_block)
+        last_m: BinaryVHFTrace.m_arr_type = m_block[-1]
 
         # We first perform the np.diff for the self._trace_blk_id > 1 case:
         x = None
@@ -317,11 +336,11 @@ class ManifoldRollover:
         # Populate the np.diff for the given block
         if x is not None:
             diff_offset = 1
-            diff = np.zeros_like(m_block, dtype=np.int64)
+            diff = np.zeros_like(m_block, dtype=BinaryVHFTrace.m_arr_type)
             diff[0] = x
         else:
             diff_offset = 0
-            diff = np.zeros((m_block.size-1,), dtype=np.int64)
+            diff = np.zeros((m_block.size-1,), dtype=BinaryVHFTrace.m_arr_type)
         if self._potential_overflow(m_block):  # Perform only if necessary
             diff[diff_offset:] = np.diff(m_block)
             # Next, get indices and rollover direction
@@ -363,6 +382,9 @@ class VHFparser:
     reduced_phase: Phase/2pi array
     radii: I^2 + Q^2 array. Division by N points is not done.
     """
+    i_arr: NDArray[BinaryVHFTrace.i_arr_type]
+    q_arr: NDArray[BinaryVHFTrace.q_arr_type]
+    m_arr: NDArray[BinaryVHFTrace.m_arr_type]
 
     def __init__(self, filename: str | os.PathLike | BufferedRandom, *,
                  start_time: datetime | None = None,
@@ -551,7 +573,10 @@ class VHFparser:
 
     # Collection of methods necessary for post-header, pre-trace processing
     # prior to data processing, such as obtaining sparse_m_delta.
-    def _all_trace(self, bsize=200_000) -> Iterator[npt.NDArray[np.uint64]]:
+    def _all_trace(
+        self,
+        bsize=200_000
+    ) -> Iterator[NDArray[BinaryVHFTrace.raw_word_type]]:
         """Generates array containing entire trace data. Do not cache.
 
         This is particularly necessary for doing a pre-processing in
@@ -559,12 +584,13 @@ class VHFparser:
         """
         # bsize = 200_000  # 200k * 64 bits ~ 1.6MiB
         w: int = math.ceil(self.timings.duration_idx / bsize) - 1
+        t = BinaryVHFTrace.raw_word_type
         for i in range(w+1):
             s = (bsize,) if i != w else (self.timings.duration_idx
                                          - w * bsize,)
             yield np.memmap(
                 self._filename,
-                dtype=np.dtype(np.uint64).newbyteorder("<"),
+                dtype=np.dtype(t).newbyteorder("<"),
                 mode="r",
                 offset=self._num_head_bytes + i * bsize * self._bytes_per_word,
                 shape=s,
@@ -598,9 +624,9 @@ class VHFparser:
         fix_m: bool
             Accounts for 16-bit overflow of m during reading.
         """
-        self.i_arr: npt.NDArray[np.int32] = BinaryVHFTrace.read_i_arr(data)
-        self.q_arr: npt.NDArray[np.int32] = BinaryVHFTrace.read_q_arr(data)
-        self.m_arr: npt.NDArray[np.int64] = BinaryVHFTrace.read_m_arr(data)
+        self.i_arr = BinaryVHFTrace.read_i_arr(data)
+        self.q_arr = BinaryVHFTrace.read_q_arr(data)
+        self.m_arr = BinaryVHFTrace.read_m_arr(data)
 
         if fix_m:
             self._fix_overflow_m()
