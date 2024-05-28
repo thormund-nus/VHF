@@ -362,10 +362,25 @@ class VHFparser:
 
     Init arguments
     -----
-    start_time: datetime.datetime compatible
-    end_time: datetime.datetime compatible
-        Trims VHFparser.data and derived objects at init-time to be bounded
-        within start_time and end_time
+    filename: io.BufferedRandom | str | os.PathLike
+        Anything that yields a seeakeble stream containing VHF-board generated
+        binary data. For example, stdout cannot be fed into this parser, as it
+        is not seekable.
+    headers_only: bool = False
+        Terminate initialization function early, i.e.: after obtaining header
+        data from the file, delaying the parsing of binary data in the
+        plot_window until derived objects requests for them.
+    plot_start_time: Optional[datetime.datetime | datetime.timedelta]
+        Specify either an absolute time or time relative to start of trace.
+        Defaults to trace start if not specified.
+    plot_duration: datetime.timedelta compatible = None
+        Specify an end time relative to plot_start_time for the view of trace
+        data and derived objects at init-time to be trimmed to.
+        Mutually exclusive with plot_end_time.
+    plot_end_time: datetime.datetime compatible
+        Specify an absolute end time for the view of the trace data to be
+        trimmed to.
+        Mutually exclusive with plot_duration.
 
     Init-time available properties
     -----
@@ -386,9 +401,14 @@ class VHFparser:
     q_arr: NDArray[BinaryVHFTrace.q_arr_type]
     m_arr: NDArray[BinaryVHFTrace.m_arr_type]
 
-    def __init__(self, filename: str | os.PathLike | BufferedRandom, *,
-                 start_time: datetime | None = None,
-                 end_time: datetime | None = None):
+    def __init__(
+        self, filename: str | os.PathLike | BufferedRandom,
+        *,
+        headers_only: bool = False,
+        plot_start_time: Optional[datetime | timedelta] = None,
+        plot_duration: Optional[timedelta] = None,
+        plot_end_time: Optional[datetime] = None,
+    ):
         """Take a VHF output file and populates relevant properties."""
         self.__create_logger()
         self.logger.info('VHF parser has been run for file: %s', filename)
@@ -451,20 +471,32 @@ class VHFparser:
             self.logger.warning("No file-like/buffer object given to init.")
             print("No file-like/buffer object given to init.")
             return
+        self._init_timing_info()
 
-        max_data_size = int((self.filesize - self._num_head_bytes) / 8)
+        # init guard: parse time params
+        if plot_start_time is not None:
+            assert isinstance(plot_start_time, datetime | timedelta)
+        if plot_duration is not None:
+            assert isinstance(plot_end_time, timedelta)
+        if plot_end_time is not None:
+            assert isinstance(plot_end_time, datetime)
+        # If plot_*_time is given, keep into variable for subsequent use
+        if not (plot_start_time is None and plot_duration is None
+                and plot_end_time is None):
+            self.timings.update_plot_timing(
+                start=plot_start_time,
+                duration=plot_duration,
+                end=plot_end_time
+            )
 
-        # now read to right boundary of file
-        self.data = np.memmap(
-            filename,
-            dtype=np.dtype(np.uint64).newbyteorder("<"),
-            mode="r",
-            offset=self._num_head_bytes,
-            shape=(max_data_size,),
-        )
+        if headers_only:
+            # Terminates class initialization if only headers is wanted.
+            self.logger.debug("VHFparser initialization terminated early with headers_only = True.")
+            return
+
+
 
         # init: get (I, Q, M)
-        self.read_words_numpy(self.data)
 
     def __create_logger(self):
         self.logger = logging.getLogger("vhfparser")
@@ -508,6 +540,20 @@ class VHFparser:
         self.headerraw: bytes = buffer.read(header_count)
         self.headerraw = self.headerraw.rstrip(b"\x00")
         self.parse_header(self.headerraw)
+
+    def _init_timing_info(self):
+        """Populate file timing information.
+
+        This gives information about file start time, duration/end time.
+        """
+        trc_len = (self.filesize - self._num_head_bytes)/self._bytes_per_word
+        assert math.ceil(trc_len) == math.floor(trc_len), "File not to specification!"
+        trc_len = int(trc_len)
+        self.timings = TraceTimer(
+            self.header["Time start"],
+            self.header["sampling freq"],
+            trc_len
+        )
 
     def parse_header(self, header_raw: bytes):
         """Convert binary file header into a header property."""
