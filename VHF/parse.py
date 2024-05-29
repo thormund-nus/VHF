@@ -213,6 +213,11 @@ class TraceTimer:
         return dt1, dt2
 
     @property
+    def trace_duration_idx(self) -> int:
+        """Length of trace"""
+        return int(self.trace_duration/self.sample_interval)
+
+    @property
     def start_idx(self) -> int:
         """Start index relative to trace[0] for plot_start."""
         delta = self.plot_start - self.trace_start
@@ -470,12 +475,13 @@ class VHFparser:
             print("No file-like/buffer object given to init.")
             return
         self._init_timing_info()
+        assert self._num_trc_bytes == self.timings.duration_idx
 
         # init guard: parse time params
         if plot_start_time is not None:
             assert isinstance(plot_start_time, datetime | timedelta)
         if plot_duration is not None:
-            assert isinstance(plot_end_time, timedelta)
+            assert isinstance(plot_duration, timedelta)
         if plot_end_time is not None:
             assert isinstance(plot_end_time, datetime)
         # If plot_*_time is given, keep into variable for subsequent use
@@ -546,11 +552,11 @@ class VHFparser:
         """
         trc_len = (self.filesize - self._num_head_bytes)/self._bytes_per_word
         assert math.ceil(trc_len) == math.floor(trc_len), "File not to specification!"
-        trc_len = int(trc_len)
+        self._num_trc_bytes = int(trc_len)
         self.timings = TraceTimer(
             self.header["Time start"],
             self.header["sampling freq"],
-            trc_len
+            self._num_trc_bytes
         )
 
     def parse_header(self, header_raw: bytes):
@@ -627,11 +633,10 @@ class VHFparser:
         determining overflow m_arr.
         """
         # bsize = 200_000  # 200k * 64 bits ~ 1.6MiB
-        w: int = math.ceil(self.timings.duration_idx / bsize) - 1
+        w: int = math.ceil(self._num_trc_bytes / bsize) - 1
         t = BinaryVHFTrace.raw_word_type
         for i in range(w+1):
-            s = (bsize,) if i != w else (self.timings.duration_idx
-                                         - w * bsize,)
+            s = (bsize,) if i != w else (self._num_trc_bytes - w * bsize,)
             yield np.memmap(
                 self._filename,
                 dtype=np.dtype(t).newbyteorder("<"),
