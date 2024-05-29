@@ -293,12 +293,9 @@ class ManifoldRollover:
     def _potential_overflow(
         self,
         m_block: NDArray[BinaryVHFTrace.m_arr_type]
-    ) -> bool:
+    ) -> np.bool_:
         """Determines is a block of m_arr might require delta-obtaining."""
-        if (np.size(np.where(m_block > self._ptl_overflow))
-                + np.size(np.where(m_block < -self._ptl_overflow))) > 0:
-            return True
-        return False
+        return np.any(m_block > self._ptl_overflow) or np.any(m_block < -self._ptl_overflow)
 
     def _rollover_lemma(
         self,
@@ -329,26 +326,27 @@ class ManifoldRollover:
         m_block = BinaryVHFTrace.read_m_arr(trace_block)
         last_m: BinaryVHFTrace.m_arr_type = m_block[-1]
 
-        # We first perform the np.diff for the self._trace_blk_id > 1 case:
-        x = None
-        if self._prev_trc_last_m is not None:
-            x = m_block[0] - self._prev_trc_last_m
-        # Populate the np.diff for the given block
-        if x is not None:
-            diff_offset = 1
-            diff = np.zeros_like(m_block, dtype=BinaryVHFTrace.m_arr_type)
-            diff[0] = x
-        else:
-            diff_offset = 0
-            diff = np.zeros((m_block.size-1,), dtype=BinaryVHFTrace.m_arr_type)
         if self._potential_overflow(m_block):  # Perform only if necessary
+            # We first perform the np.diff for the self._trace_blk_id > 1 case:
+            x = None
+            if self._prev_trc_last_m is not None:
+                x = m_block[0] - self._prev_trc_last_m
+            # Populate the np.diff for the given block
+            if x is not None:
+                diff_offset = 1
+                diff = np.zeros_like(m_block, dtype=BinaryVHFTrace.m_arr_type)
+                diff[0] = x
+            else:
+                diff_offset = 0
+                diff = np.zeros((m_block.size-1,), dtype=BinaryVHFTrace.m_arr_type)
             diff[diff_offset:] = np.diff(m_block)
             # Next, get indices and rollover direction
             idx, deltas = self._rollover_lemma(diff)
 
             # Place into spare list
-            self._list_m_delta.extend(deltas)
-            self._list_m_delta_idx.extend(idx)
+            if idx.size > 0:
+                self._list_m_delta.extend(deltas)
+                self._list_m_delta_idx.extend(idx)
 
         # End the loop
         self._prev_trc_last_m = last_m
