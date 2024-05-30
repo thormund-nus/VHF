@@ -26,8 +26,10 @@ class BinaryVHFTrace:
     m_arr_type = np.int64
 
     bytes_per_word: int = 8
-    potential_m_overflow_tolerance: int = 0x7F00  # m = int16 => max - min = 0xFFFF
+    potential_m_overflow_tolerance: int = 0x7F00
+    # |m| > potential_m_overflow_tolerance => np.diff is then run
     actual_m_overflow: int = 0xF000  # trc[i+1] - trc[i] > THIS counts as overflowing
+    m_offset = 0xFFFF + 1
 
     @staticmethod
     def read_i_arr(trace: NDArray[raw_word_type]) -> NDArray[i_arr_type]:
@@ -248,6 +250,7 @@ class ManifoldRollover:
     -----
     update: Keeps track of overflows with successive blocks of trace's m_arr.
     lock: Blocks any more use of update, allows for use of populated fix_m_arr.
+    fix_m_overflow: For the given plot_window, displaces m_arr as necessary.
     """
 
     def __init__(self, trace_block_size: int):
@@ -355,6 +358,34 @@ class ManifoldRollover:
 
         # End the loop
         self._prev_trc_last_m = last_m
+
+    def fix_m_overflow(
+        self,
+        m_arr: NDArray[BinaryVHFTrace.m_arr_type],
+        timer: TraceTimer,
+    ) -> NDArray[BinaryVHFTrace.m_arr_type]:
+        """Displaces existing m_arr from a given plot_window due to m-overflows.
+
+        It is assumed that the given m_arr is in accordance to the plot window
+        as specified in the timer. We can then recover the necessary
+        information to unwrap m overflows.
+        """
+        self.logger.debug("fix_m_overflow called.")
+        start_idx, end_idx = timer.start_idx, timer.end_idx
+        # For the specified plot window, we have already obtained
+        # trc[start_idx: end_idx]
+        # => len(trc[...]) = duration_idx := end_idx - start_idx
+        rollovers_idx_start = np.searchsorted(
+            self.sparse_m_delta_idx, start_idx-1, side='right'
+        )
+        rollovers_idx_end = np.searchsorted(self.sparse_m_delta_idx, end_idx)
+        # these are indices of the sparse array to fetch between
+        displacement = BinaryVHFTrace.m_offset
+        # TODO: optimise using partitions
+        for m_index, v in zip(self.sparse_m_delta_idx[rollovers_idx_start:rollovers_idx_end]-start_idx, self.sparse_m_delta[rollovers_idx_start:rollovers_idx_end]):
+            m_arr[m_index:] -= v * displacement
+        self.logger.debug("fix_m_overflow completed.")
+        return m_arr
 
 
 class VHFparser:
