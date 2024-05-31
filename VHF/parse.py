@@ -524,12 +524,24 @@ class VHFparser:
                 end=plot_end_time
             )
 
+        self.logger.debug("Header parsing completed.")
         if headers_only:
             # Terminates class initialization if only headers is wanted.
             self.logger.debug("VHFparser initialization terminated early with headers_only = True.")
             return
 
+        # all trace data processing is assumed to not necessarily require to be
+        # done at init time, that is to say, calling self.reduced_phase even if
+        # early terminated with `headers_only` will then call the subsequent
+        # necessary read_words method to obtain the reduced_phase and other
+        # derived properties
 
+        # post-init/pre-trace: check for manifold rollovers
+        self._pre_trace_parsing()
+
+        # post-init: Populate body "data" to within (start_time, end_time)
+        # Available data in file in contrast to header['s']'s expected
+        # file-length in the event that sampling
 
         # init: get (I, Q, M)
 
@@ -692,6 +704,12 @@ class VHFparser:
         self._m_mgr_obtained = True
         if result.sparse_m_delta_idx.size > 0:
             self._m_mgr = result
+
+    def _pre_trace_parsing(self):
+        """Procedures that have to be done prior to parsing a trace window."""
+        # 1. Checking for manifold rollovers.
+        self._obtain_m_deltas()
+        self.logger.debug("Pre-trace parsers all completed.")
 
     def read_words_numpy(self, data: np.ndarray, fix_m: bool = False):
         """Convert binary words into numpy arrays.
