@@ -425,15 +425,19 @@ class VHFparser:
     -----
     parse_header: Gets relevant front number of bytes and returns
     read_words_numpy: Converts binary words into (Q, I, M) arrays
+    update_plot_timing: For the current file, the region of (Q, I, M) and
+        derived quantities being returned (and hence being plotted) can be
+        changed by this function
 
     Run-time available properties
     -----
     reduced_phase: Phase/2pi array
     radii: I^2 + Q^2 array. Division by N points is not done.
     """
-    i_arr: NDArray[BinaryVHFTrace.i_arr_type]
-    q_arr: NDArray[BinaryVHFTrace.q_arr_type]
-    m_arr: NDArray[BinaryVHFTrace.m_arr_type]
+    _data: Optional[NDArray[BinaryVHFTrace.raw_word_type]]
+    _i_arr: Optional[NDArray[BinaryVHFTrace.i_arr_type]]
+    _q_arr: Optional[NDArray[BinaryVHFTrace.q_arr_type]]
+    _m_arr: Optional[NDArray[BinaryVHFTrace.m_arr_type]]
 
     def __init__(
         self, filename: str | os.PathLike | BufferedRandom,
@@ -488,6 +492,12 @@ class VHFparser:
         # sparse representation of necessary to not multiply reparse all of
         # m-array again to determine how much m-offset is necessary for
         # arbitrary window.
+
+        # To avoid AttributeErrors, we initialise them here
+        self._data = None
+        self._i_arr = None
+        self._q_arr = None
+        self._m_arr = None
 
         # init: Begin Parsing logic, populating header
         if isinstance(filename, BufferedRandom):
@@ -544,6 +554,8 @@ class VHFparser:
         # file-length in the event that sampling
 
         # init: get (I, Q, M)
+        # these are a function of the specified plot window
+        self.read_words()
 
     def __create_logger(self):
         self.logger = logging.getLogger("vhfparser")
@@ -711,7 +723,57 @@ class VHFparser:
         self._obtain_m_deltas()
         self.logger.debug("Pre-trace parsers all completed.")
 
-    def read_words_numpy(self, data: np.ndarray, fix_m: bool = False):
+    # Updating all properties that follow from _data and (I, Q, M)
+    def update_plot_timing(self, lazy=False, **kwargs) -> None:
+        """Change the view window associated to currently parsed file.
+
+        lazy: bool
+            Defer the fetch of the changed underlying plot window's view of the
+            Trace binary data in this function call. Defaults to False.
+        Refer to TraceTimer.update_plot_timing for details.
+        """
+        # Delete all derived state if plot timing changes.
+        timing_changed = self.timings.update_plot_timing(**kwargs)
+        if timing_changed:
+            self._data = None
+            self._i_arr = None
+            self._q_arr = None
+            self._m_arr = None
+            self.logger.info(
+                "update_plot_timing has cleared all objects "
+                "derived from self.data"
+            )
+            # gc.collect()
+
+            if not lazy:
+                _ = self.data
+        else:
+            self.logger.warning("update_plot_timing changed nothing.")
+
+    @property
+    def data(self) -> NDArray[BinaryVHFTrace.raw_word_type]:
+        """Block of binary trace in accordance with plot window specified."""
+        if self._data is None:
+            self._data = np.memmap(
+                self._filename,
+                dtype=np.dtype(BinaryVHFTrace.raw_word_type).newbyteorder("<"),
+                mode="r",
+                offset=self._num_head_bytes + self.timings.start_idx * self._bytes_per_word,
+                shape=(self.timings.duration_idx,)
+            )
+            self.logger.debug("self._data fetched. offset = %s",
+                              self._num_head_bytes
+                              + self.timings.start_idx * self._bytes_per_word)
+            self.logger.debug("self._data fetched. shape = %s",
+                              self._data.shape)
+        return self._data
+
+    def read_words(self) -> None:
+        """Converts binary words found within VHF Trace data into arrays."""
+        self.logger.debug("read_words called.")
+        self._read_words_numpy(self.data)
+
+    def _read_words_numpy(self, data: NDArray[BinaryVHFTrace.raw_word_type]):
         """Convert binary words into numpy arrays.
 
         Input
@@ -719,49 +781,36 @@ class VHFparser:
         data: np.ndarray
             This contains numpy binary data that contains 1 word of data
             per array element.
-        fix_m: bool
-            Accounts for 16-bit overflow of m during reading.
         """
-        self.i_arr = BinaryVHFTrace.read_i_arr(data)
-        self.q_arr = BinaryVHFTrace.read_q_arr(data)
-        self.m_arr = BinaryVHFTrace.read_m_arr(data)
+        if not (self._i_arr is None or self._q_arr is None
+                or self._m_arr is None):
+            self.logger.warning("I/Q/M array was already found to be obtained for the current plot window. Skipping...")
+            return
 
-        if fix_m:
-            self._fix_overflow_m()
+        self._i_arr = BinaryVHFTrace.read_i_arr(data)
+        self._q_arr = BinaryVHFTrace.read_q_arr(data)
+        self._m_arr = BinaryVHFTrace.read_m_arr(data)
 
-    @cached_property
-    def _potential_m_overflow(self) -> bool:
-        """Determine if elements in self.m_arr close exceeds +-tol."""
-        # Used to calibrate invocation of _m_fix()
-        tol: int = 0x7F00
-        if tol < 0:
-            raise ValueError
-        if (np.size(np.where(self.m_arr > tol))
-                + np.size(np.where(self.m_arr < -tol))) > 0:
-            return True
-        return False
+        # pre-trace is needed if we only done headers
+        if not self._m_mgr_obtained:
+            self._pre_trace_parsing()
+        # we now perform m-overflow fix only if necessary
+        if not self._m_mgr_obtained:
+            raise RuntimeError(
+                "_pre_trace_parsing should have done a ManifoldRollover "
+                "single pass by this point."
+            )
+        elif self._m_mgr_obtained \
+                and isinstance(self._m_mgr, ManifoldRollover):
+            # fix m overflow
+            # TODO: check if there are indices found in ManifoldManager that requires calling rollover.
+            self._m_arr = self._m_mgr.fix_m_overflow(self._m_arr, self.timings)
+            self.logger.debug("fix_m_overflow completed.")
+        elif self._m_mgr_obtained \
+                and not isinstance(self._m_mgr, ManifoldRollover):
+            self.logger.debug("Manifold Manager fix overflow was not needed.")
 
-    def _fix_overflow_m(self) -> None:
-        """Class method for fixing m value with 16-bit overflow."""
-        if not self._fix_m_called:
-            # get m_shift of +- n as according before multiplying by 2**16 to
-            # account for overflow
 
-            # 1. get location of +/-ve overflows
-            # index 0 being +1 would mean that m[0] has flowed above the 16-bit
-            # limit into a negative m[1], similarly, index 1 being -1 would
-            # mean that m[1] has flowed below the 16-bit minimum into a large
-            # positive m[2]
-            deltas = np.diff(self.m_arr)  # subtraction between views
-            # 2. now round towards +-1
-            tol = 0xF000  # keep as int
-            deltas = (np.greater(deltas, tol).astype(int)
-                      - np.less(deltas, -tol).astype(int))
-            # 3. finally fix
-            self.m_arr[1:] -= 0x10000 * np.cumsum(deltas)
-            self._fix_m_called = True
-        else:
-            print("overflow m_arr has been fixed before!")
 
     @cached_property
     def reduced_phase(self):
