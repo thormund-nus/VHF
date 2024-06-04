@@ -1,6 +1,5 @@
 from datetime import datetime
 from datetime import timedelta
-from functools import cached_property
 import logging
 from typing import Iterator, Optional
 import math
@@ -438,6 +437,8 @@ class VHFparser:
     _i_arr: Optional[NDArray[BinaryVHFTrace.i_arr_type]]
     _q_arr: Optional[NDArray[BinaryVHFTrace.q_arr_type]]
     _m_arr: Optional[NDArray[BinaryVHFTrace.m_arr_type]]
+    _phase: Optional[NDArray[np.float64]]
+    _radii: Optional[NDArray[np.float64]]
 
     def __init__(
         self, filename: str | os.PathLike | BufferedRandom,
@@ -498,6 +499,8 @@ class VHFparser:
         self._i_arr = None
         self._q_arr = None
         self._m_arr = None
+        self._phase = None
+        self._radii = None
 
         # init: Begin Parsing logic, populating header
         if isinstance(filename, BufferedRandom):
@@ -739,6 +742,8 @@ class VHFparser:
             self._i_arr = None
             self._q_arr = None
             self._m_arr = None
+            self._phase = None
+            self._radii = None
             self.logger.info(
                 "update_plot_timing has cleared all objects "
                 "derived from self.data"
@@ -810,29 +815,51 @@ class VHFparser:
                 and not isinstance(self._m_mgr, ManifoldRollover):
             self.logger.debug("Manifold Manager fix overflow was not needed.")
 
+    @property
+    def i_arr(self) -> NDArray[BinaryVHFTrace.i_arr_type]:
+        if self._i_arr is None:
+            self.read_words()
+        if self._i_arr is None:
+            raise RuntimeError  # Suppress returnTypeError
+        return self._i_arr
 
+    @property
+    def q_arr(self) -> NDArray[BinaryVHFTrace.q_arr_type]:
+        if self._q_arr is None:
+            self.read_words()
+        if self._q_arr is None:
+            raise RuntimeError  # Suppress returnTypeError
+        return self._q_arr
 
-    @cached_property
-    def reduced_phase(self):
+    @property
+    def m_arr(self) -> NDArray[BinaryVHFTrace.m_arr_type]:
+        if self._m_arr is None:
+            self.read_words()
+        if self._m_arr is None:
+            raise RuntimeError  # Suppress returnTypeError
+        return self._m_arr
+
+    # Properties derived from I, Q, M arrays
+    @property
+    def reduced_phase(self) -> NDArray[np.float64]:
         """Obtain phase(time)/2pi for the given file.
 
         phase is obtained by atan(Q/I).
         """
-        # Account for 16 bit overflow of m.
-        if not self._fix_m_called and self._potential_m_overflow:
-            self._fix_overflow_m()
+        if self._phase is None:
+            p = -np.arctan2(self.i_arr, self.q_arr)
+            p /= 2*np.pi
+            p -= self.m_arr
+            self._phase = p
+        return self._phase
 
-        phase = -np.arctan2(self.i_arr, self.q_arr)
-        phase /= 2*np.pi
-        phase -= self.m_arr
-        return phase
-
-    @cached_property
-    def radii(self):
+    @property
+    def radii(self) -> NDArray[np.float64]:
         """Obtains radius(time) for the given file.
 
         Radius is obtained by sqrt(Q^2 + I^2).
         """
-        # dtype starting from int32 should be a non-issue
-        radii = np.hypot(self.q_arr, self.i_arr)
-        return radii
+        if self._radii is None:
+            # dtype starting from int32 should be a non-issue
+            self._radii = np.hypot(self.q_arr, self.i_arr)
+        return self._radii
