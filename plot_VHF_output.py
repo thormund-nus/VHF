@@ -3,6 +3,7 @@
 
 from datetime import datetime
 from matplotlib import pyplot as plt
+from matplotlib.axes._axes import Axes
 import numpy as np
 from typing import Tuple, Callable
 from pathlib import Path
@@ -125,6 +126,8 @@ def plot_rad_spec(radius: bool, velocity: bool, spectrum: bool) -> Callable:
         options_sharex = [True, True, False]  # sharex with axs[0], i.e.: r
         n = 1+sum(options)
         fig, axs = plt.subplots(nrows=n, ncols=1)
+        if isinstance(axs, Axes):
+            axs = [axs]
         i = 0
         plotphi(axs[i], o, phase)
         for option, plot_, opt_x in zip(options, options_plots, options_sharex):
