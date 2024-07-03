@@ -387,9 +387,29 @@ class ManifoldRollover:
         rollovers_idx_end = np.searchsorted(self.sparse_m_delta_idx, end_idx)
         # these are indices of the sparse array to fetch between
         displacement = BinaryVHFTrace.m_offset
-        # TODO: optimise using partitions
-        for m_index, v in zip(self.sparse_m_delta_idx[rollovers_idx_start:rollovers_idx_end]-start_idx, self.sparse_m_delta[rollovers_idx_start:rollovers_idx_end]):
-            m_arr[m_index:] -= v * displacement
+
+        def partitions_of_m() -> Iterator[tuple[
+            ManifoldRollover.m_delta_idx_type,
+            ManifoldRollover.m_delta_idx_type,
+            ManifoldRollover.m_delta_type
+        ]]:
+            """Yield continuous partition of trace and value to displace by."""
+            q = 0
+            nonlocal start_idx, end_idx, rollovers_idx_start, rollovers_idx_end
+            if rollovers_idx_end <= rollovers_idx_start:
+                return
+            left_arr = self.sparse_m_delta_idx[rollovers_idx_start:rollovers_idx_end] - start_idx  # noqa: E501
+            right_arr = np.zeros_like(left_arr)
+            right_arr[:-1] = self.sparse_m_delta_idx[rollovers_idx_start+1:rollovers_idx_end] - start_idx  # noqa: E501
+            right_arr[-1] = end_idx - start_idx
+            q_arr = np.cumsum(
+                self.sparse_m_delta[rollovers_idx_start:rollovers_idx_end]
+            )
+            for left, right, q in zip(left_arr, right_arr, q_arr):
+                yield left, right, q
+
+        for m_left_idx, m_right_idx, v in partitions_of_m():
+            m_arr[m_left_idx:m_right_idx] -= v * displacement
         self.logger.debug("fix_m_overflow completed.")
         return m_arr
 
