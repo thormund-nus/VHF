@@ -179,25 +179,11 @@ def main():
     sparse_num_velocity = 10
 
     file1 = data_dir.joinpath('2023-07-06T14:04:22.913767_s499_q268435456_F0_laser2_3674mA_20km.bin')
-    parsed1 = VHFparser(file1)
-
-    start_time = 150 # seconds
-    end_time = 650
-    start_index, end_index = crop_indices(
-        start_time, 
-        end_time, 
-        int(parsed1.header["sampling freq"]), 
-        sparse_num_phase * sparse_num_velocity,
-        sparse_num_phase
-        )
-
-    print(f"[Debug] {start_index = }, {end_index = }")
-
-    # forcefully cut down on memory
-    parsed1.i_arr = parsed1.i_arr[:end_index]
-    parsed1.q_arr = parsed1.q_arr[:end_index]
-    parsed1.m_arr = parsed1.m_arr[:end_index]
-    phase1 = get_phase(parsed1)[start_index:end_index]
+    parsed1 = VHFparser(file1,
+                        plot_start_time=timedelta(seconds=150),
+                        plot_duration=timedelta(seconds=400),
+                        )
+    phase1 = parsed1.reduced_phase
 
     phase1_avg = block_avg_tail(phase1, sparse_num_phase)
     velocity1 = np.diff(phase1_avg) * (parsed1.header["sampling freq"]/sparse_num_phase) # * 1550e-9
@@ -205,7 +191,6 @@ def main():
 
     # account for butchering of parsed headers
     parsed1.header["sampling freq"] /= (sparse_num_phase * sparse_num_velocity) # after the dust has settled
-    parsed1.header["Time start"] += timedelta(seconds=start_time)
     t = np.arange(len(velocity1_avg)) / parsed1.header["sampling freq"]
 
     shoehorn_header = Stats()
