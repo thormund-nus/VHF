@@ -1,12 +1,12 @@
 from datetime import datetime
 from datetime import timedelta
+from io import BufferedRandom
 import logging
 from typing import Iterator, Optional
 import math
 import numpy as np
 from numpy.typing import NDArray
 import os
-from io import BufferedRandom
 
 __all__ = [
     "VHFparser",
@@ -251,6 +251,12 @@ class ManifoldRollover:
     lock: Blocks any more use of update, allows for use of populated fix_m_arr.
     fix_m_overflow: For the given plot_window, displaces m_arr as necessary.
     """
+    m_delta_type = np.int16
+    m_delta_idx_type = np.intp
+    sparse_m_delta_type = NDArray[m_delta_type]
+    sparse_m_delta_idx_type = NDArray[m_delta_idx_type]
+    sparse_m_delta: NDArray[m_delta_type]
+    sparse_m_delta_idx: NDArray[m_delta_idx_type]
 
     def __init__(self, trace_block_size: int):
         """Creates empty state of ManifoldRollover.
@@ -269,12 +275,10 @@ class ManifoldRollover:
 
         # This stores the number of times to displace the plot upwards due to
         # packing into i16.
-        self.sparse_m_delta: NDArray[np.int16]
-        self._list_m_delta: list[np.int16] = []
+        self._list_m_delta: list[ManifoldRollover.m_delta_type] = list()
         # This is the associated index along the trace where m_delta occurs.
         # Ideally, we should be using usize (from Rust).
-        self.sparse_m_delta_idx: NDArray[np.intp]
-        self._list_m_delta_idx: list[np.intp] = []
+        self._list_m_delta_idx: list[ManifoldRollover.m_delta_idx_type] = list()
         self.logger.info("Initialization completed.")
 
     def __create_logger(self):
@@ -291,8 +295,11 @@ class ManifoldRollover:
             return
 
         self._lock = True
-        self.sparse_m_delta = np.array(self._list_m_delta, dtype=np.int16)
-        self.sparse_m_delta_idx = np.array(self._list_m_delta_idx, dtype=np.intp)
+        self.sparse_m_delta = np.array(self._list_m_delta,
+                                       dtype=ManifoldRollover.m_delta_type)
+        self.sparse_m_delta_idx = np.array(
+            self._list_m_delta_idx, dtype=ManifoldRollover.m_delta_idx_type
+        )
         del self._list_m_delta
         del self._list_m_delta_idx
         self.logger.info("Locked and created sparse repr.")
@@ -307,16 +314,16 @@ class ManifoldRollover:
     def _rollover_lemma(
         self,
         d_block: BinaryVHFTrace.m_arr_type | NDArray[BinaryVHFTrace.m_arr_type]
-    ) -> tuple[NDArray[np.intp], NDArray[np.int16]]:
+    ) -> tuple[sparse_m_delta_idx_type, sparse_m_delta_type]:
         """Gets (idx, roll-over) for diff_block."""
         diff_overflow = BinaryVHFTrace.actual_m_overflow
-        deltas: NDArray[np.int16] = (
+        deltas: ManifoldRollover.sparse_m_delta_type = (
             np.greater(d_block, diff_overflow).astype(int)
             - np.less(d_block, -diff_overflow).astype(int)
         )  # TODO: type casting here needs to be tested better.
         idx = np.ravel(np.argwhere(deltas))  # assumes 1D
-        rollover: NDArray[np.int16] = deltas[idx]
-        idx: NDArray[np.intp] = idx + self._trace_blk_id * self._blk_size
+        rollover: ManifoldRollover.sparse_m_delta_type = deltas[idx]
+        idx = idx + self._trace_blk_id * self._blk_size
         return idx, rollover
 
     def update(self, trace_block: NDArray[BinaryVHFTrace.raw_word_type]):
