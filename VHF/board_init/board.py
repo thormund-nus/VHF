@@ -3,11 +3,11 @@ from enum import Enum
 from functools import cached_property
 import logging
 import os
-from os import PathLike
+from os import PathLike, lstat
 from pathlib import Path
 from serial import Serial
 from shlex import quote
-from stat import S_IRGRP, S_IWGRP
+from stat import S_IRGRP, S_IWGRP, S_ENFMT
 import subprocess
 from tempfile import TemporaryFile
 from time import sleep
@@ -96,6 +96,26 @@ class Board:
             .joinpath(self.usb_device_id)
             .joinpath("serial")
         ).read().strip()  # VHFP-QO01
+
+        # Assert perms of SET_DEVICE_MODE
+        if not Path(SET_DEVICE_MODE).exists():
+            raise RuntimeError(
+                "Compiled C file for setting VHF board could not be found! Run `make init` at root of git repository."  # noqa:E501
+            )
+        if Path(SET_DEVICE_MODE).owner().upper() != "ROOT":
+            raise PermissionError(
+                "Compiled C file for setting VHF board has wrong owner! Run `make init` at root of git repository."  # noqa:E501
+            )
+        if Path(SET_DEVICE_MODE).group().upper() != "ROOT":
+            raise PermissionError(
+                "Compiled C file for setting VHF board has wrong group! Run `make init` at root of git repository."  # noqa:E501
+            )
+        if not (lstat(SET_DEVICE_MODE).st_mode & S_ENFMT):
+            # man(1) chmod: "... set user or group ID on execution (s), ..."
+            raise PermissionError(
+                "Compiled C file for setting VHF board has wrong permissions bits! Run `make init` at root of git repository."  # noqa:E501
+            )
+
 
     def __repr__(self):
         string = "\n".join(
