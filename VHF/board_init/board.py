@@ -272,7 +272,7 @@ class Board:
             try:
                 with TemporaryFile(dir="/dev/shm") as f:
                     output = subprocess.run(
-                        **(vhf_runner.subprocess_run(f)),
+                        **(vhf_runner.subprocess_run(f, timeout=1.8)),
                         stderr=subprocess.PIPE,
                     )
                     print(f"[Board.hybrid_clear] readout has len = {f.tell()}")
@@ -283,9 +283,12 @@ class Board:
                 self.logger.critical("%s", exc)
                 self.logger.critical("exc.stderr = ")
                 self.logger.critical("%s", exc.stderr)
+                return
             except subprocess.TimeoutExpired as exc:
                 self.logger.critical("TimeoutExpired with exception:")
                 self.logger.critical("%s", exc)
                 self.logger.critical("exc.stderr = ")
                 self.logger.critical("%s", exc.stderr)
+                self.logger.warn("Was a looping version of teststream used?")
+                return
             sleep(0.1)

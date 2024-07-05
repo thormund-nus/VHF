@@ -16,6 +16,7 @@ from typing import Any
 from typing import IO
 from typing import Iterable
 from typing import Mapping
+from typing import Optional
 from typing import Union
 from .process import board_in_use
 
@@ -359,7 +360,7 @@ class VHFRunner():
         self.logger.debug("subprocess_Popen called. Returning %s", result)
         return result
 
-    def subprocess_run(self, stdout: _FILE = None) -> dict:
+    def subprocess_run(self, stdout: _FILE = None, timeout: Optional[float] = None) -> dict:
         """All arguments for subprocess.run(...).
 
         If writing to stdout instead, user is to provide their own pipe to pass
@@ -367,7 +368,10 @@ class VHFRunner():
         """
         result = self.subprocess_Popen()
         result["check"] = True
-        result["timeout"] = 7 + self.sample_time()
+        if float is None:
+            result["timeout"] = 7 + self.sample_time()
+        else:
+            result["timeout"] = timeout
 
         if self.to_file:
             result['capture_output'] = True
