@@ -288,6 +288,8 @@ class VHFRunner():
             result.extend(['-F', self.board_kwargs['filter_const']])
         # other board params
         for k, v in self.board_kwargs.items():
+            if k in list(["vga_num", "filter_const"]):
+                continue
             result.extend(['-'+k, s(v)])
 
         return result
