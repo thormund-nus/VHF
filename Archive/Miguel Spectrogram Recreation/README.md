@@ -15,7 +15,7 @@ done in traffic-spectrum.py
 `original_script/`:
   FFT-*.py files are either handtyped or email-copies of what Miguel had
   recalled off the top of his head. Parameters and code structure are not
-  accurate, and only server as scaffold reference
+  accurate, and only serve as scaffold reference
   `older_obspy_version/`:
     Conda libraries as installed by Miguel, with zip files.
     Note that these are outdated version of many things.
