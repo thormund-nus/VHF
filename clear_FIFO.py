@@ -23,7 +23,7 @@ def clear_fifo_per_board(dev_id: str, aggressive: bool = False,
         # vhf_config_path=Path(__file__).parent.joinpath("VHF_board_params.ini")
     )
     if board.in_use() and \
-            not user_input_bool_force(f"Board {board.board_id} found to be in use! Continue?", False):
+            not user_input_bool_force(f"Board {board.board_id} found to be in use! Continue?", False):  # noqa: E501
         print("Not resetting!")
         return
     board.acm_clear()
