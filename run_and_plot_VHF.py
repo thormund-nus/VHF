@@ -14,9 +14,10 @@ from VHF.runner import VHFRunner
 def main():
     """Runs VHF board for some amount of time, and displays out temporarily."""
 
-    print("\x1b[41mRuns VHF board and shows 15s of data. Does not save data!\x1B[0m")
+    print("\x1b[41mRuns VHF board and shows 15s of data. Does not save data!\x1B[0m")  # noqa: E501
     vhf_config_path = Path(__file__).parent.joinpath('VHF_board_params.ini')
-    vhf_runner = VHFRunner(vhf_config_path,
+    vhf_runner = VHFRunner(
+        vhf_config_path,
         force_to_buffer=True,
         overwrite_properties={
             'skip_num': 4,
@@ -42,19 +43,17 @@ def main():
         emsg = 0
         start_time = datetime.datetime.now()
 
+        sb_run = vhf_runner.subprocess_run(stdout=tmp_store)
         try:
-            retcode = subprocess.run(
-                **(sb_run:=vhf_runner.subprocess_run(stdout=tmp_store)),
-                stderr=PIPE
-            )
+            retcode = subprocess.run(**sb_run, stderr=PIPE)
             logging.info("Subprocess ran with %s", str(sb_run))
             logging.info("Retcode %s", retcode)
         except KeyboardInterrupt:
             logging.info("Subprocess ran with %s", str(sb_run))
             logging.info("Keyboard Interrupted")
-            print("Keyboard Interrupt recieved!")
+            print("Keyboard Interrupt received!")
             sys.exit(0)
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:  # noqa: E501
             logging.info("Subprocess ran with %s", str(sb_run))
             logging.critical("exc: %s", exc)
             logging.critical("exc.stderr = ", exc.stderr)
