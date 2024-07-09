@@ -27,7 +27,7 @@ done in traffic-spectrum.py
     modification.
 
 `test/`:
-  Unit tests to ensure 1-to-1 compatability between my rewritten code from
+  Unit tests to ensure 1-to-1 compatibility between my rewritten code from
   Miguels' code
 
 `transfer/`:
