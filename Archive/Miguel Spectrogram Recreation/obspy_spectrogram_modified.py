@@ -35,6 +35,9 @@ def spectrogram(
         too small, the calculation will take forever. If None, it defaults to
         (samp_rate/100.0). [Obspy-1.2.2 default]
     dbscale: [bool] Uses 10 * log10 colors if True, uses Sqrt color otherwise.
+        dbscale being False is the same as getting the amplitude (V/√Hz),
+        whilst being True is the same as getting the Power (V²/Hz).
+        Further reading: https://docs.scipy.org/doc/scipy/tutorial/signal.html#tutorial-stft-legacy-stft  # noqa:E501
     mult: [float] Pad zeros to mult * wlen. This will make the spectrogram
         smoother.
 
@@ -107,6 +110,15 @@ def spectrogram(
     time: NDArray[np.float64]
     specgram, freq, time = mlab.specgram(data, Fs=samp_rate, NFFT=nfft,
                                          pad_to=mult, noverlap=nlap)
+    # reading: https://docs.scipy.org/doc/scipy/tutorial/signal.html#continuous-time-sine-signal  # noqa: E501
+    # ref: https://github.com/matplotlib/matplotlib/blob/v3.9.1/lib/matplotlib/mlab.py#L638  # noqa: E501
+    # 1. mode here defaults to 'psd'
+    #   see: https://github.com/matplotlib/matplotlib/blob/v3.9.1/lib/matplotlib/mlab.py#L246  # noqa: E501
+    #   This alone would give the Energy Spectral density of abs(X(f))², with units V²s/Hz.  # noqa: E501
+    # 2. scale_by_freq here used is True
+    #   see: https://github.com/matplotlib/matplotlib/blob/v3.9.1/lib/matplotlib/mlab.py#L284  # noqa: E501
+    #   This now gives the Power Spectral density of abs(X(f))²/τ, with units V²/Hz.  # noqa: E501
+
 
     if len(time) < 2:
         msg = (f'Input signal too short ({npts} samples, window length '
@@ -119,6 +131,7 @@ def spectrogram(
         specgram = 10 * np.log10(specgram[1:, :])
     else:
         specgram = np.sqrt(specgram[1:, :])
+        # This now gives the Amplitude Spectral density with units V/√Hz.
     freq = freq[1:]
 
     # vmin, vmax = clip
