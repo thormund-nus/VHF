@@ -7,7 +7,7 @@ cond_type = Optional[Callable[[NDArray[np.float64]], NDArray[np.bool_]]]
 
 
 def spectrogram_crop(
-    Sxx: NDArray, f: NDArray, t: NDArray, extent: tuple, f_cond: cond_type, t_cond: cond_type
+    Sxx: NDArray, f: NDArray, t: NDArray, extent: Optional[tuple], f_cond: cond_type, t_cond: cond_type
 ) -> tuple[NDArray, NDArray, NDArray, tuple]:
     """Function to crop Sxx to within f and t bounds (in natural units)."""
 
