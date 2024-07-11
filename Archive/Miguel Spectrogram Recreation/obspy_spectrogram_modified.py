@@ -1,11 +1,14 @@
 """Modified version of obspy-1.4.0's imaging/spectrogram.py, with some 1.2.2
 and personal defaults."""
+import logging
 import math
 from matplotlib import mlab
 import numpy as np
 from numpy.typing import NDArray
 
 type ExtentRet = tuple[float, float, float, float]
+
+logger = logging.getLogger("modifiedObspy")
 
 
 def spectrogram(
@@ -164,12 +167,15 @@ def spectrogram(
     #     # ax.pcolormesh(time, freq, specgram, norm=norm, **kwargs)
     #     return specgram, (time, freq)
     # else:
-    # this method is much much faster!
-    specgram = np.flipud(specgram)
+    # obspy comment: this method is much much faster!
+    # my comment: this is bad obspy-intended behaviour!
+    # specgram = np.flipud(specgram)  # what if we were to just instead set the origin ourselves?
     # center bin
     extent = (time[0] - halfbin_time, time[-1] + halfbin_time,
               freq[0] - halfbin_freq, freq[-1] + halfbin_freq)
     # ax.imshow(specgram, interpolation="nearest", extent=extent, **kwargs)
+    logger.debug("spectrogram has created spec, freq, time, extent")
+    logger.debug("Do not forget to set imshow's origin to lower as necessary.")
     return specgram, freq, time, extent
 
     # set correct way of axis, ... more trimmed out from Obspy-1.4

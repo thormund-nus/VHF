@@ -50,9 +50,8 @@ def main():
         per_lap=0.90  # Following miguel's default
     )
 
-    # Array crop to our needs  SEE COMMENTS 22 lines down
-    # Sxx, f, t = spectrogram_crop(Sxx, f, t, lambda f: f<=30, lambda t: t<=350)
-    Sxx, f, t, spec_ax_extent = spectrogram_crop(Sxx, f, t, ax_extent, None, None)
+    Sxx, f, t, spec_ax_extent = spectrogram_crop(Sxx, f, t, ax_extent, lambda f: f<=30, lambda t: t<=350)
+    # Sxx, f, t, spec_ax_extent = spectrogram_crop(Sxx, f, t, ax_extent, None, None)
     print(f"[Cmap mapping] {np.max(Sxx) = }, {np.min(Sxx) = }")
 
     matplotlib = True
@@ -67,8 +66,7 @@ def main():
         # 2. Specify that all values above 440 for vmax are to be mapped to the
         # upper end of cmap.
         # 3. aspect = auto to allow for set_xlim, set_ylim to not squash the ax
-        # IMPORTANT: Some reason??: Cropping Sxx prior to the desired (xlim,
-        # ylim) destroys the signature plot?
+        # 4. imshow should always be origin="lower" as set by us!
         fig = plt.figure()
         gs = gridspec.GridSpec(
             nrows=2, ncols=2,
@@ -86,7 +84,8 @@ def main():
             norm=my_norm, interpolation="nearest",
             vmax=440,
             extent=spec_ax_extent,
-            aspect='auto'
+            aspect="auto",
+            origin="lower",
         )
         spec_ax.grid(False)
 
