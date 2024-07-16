@@ -104,6 +104,10 @@ def spectrogram(
     data = data - data.mean()
     # end = npts / samp_rate
 
+    # for our logging
+    logger.debug("nfft = %s", nfft)
+    logger.debug("nlap = %s", nlap)
+
     # Here we call not plt.specgram as this already produces a plot
     # matplotlib.mlab.specgram should be faster as it computes only the
     # arrays
