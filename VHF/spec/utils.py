@@ -1,23 +1,43 @@
+"""Methods for handling spectrogram related objects."""
+
 from matplotlib import colors
 from matplotlib import pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
+from scipy.signal import ShortTimeFFT
 from typing import Callable, Optional
 cond_type = Optional[Callable[[NDArray[np.float64]], NDArray[np.bool_]]]
+
+__all__ = [
+    "spectrogram_crop",
+    "trunc_cmap",
+]
 
 
 def spectrogram_crop(
     Sxx: NDArray, f: NDArray, t: NDArray, extent: Optional[tuple], f_cond: cond_type, t_cond: cond_type
-) -> tuple[NDArray, NDArray, NDArray, tuple]:
-    """Function to crop Sxx to within f and t bounds (in natural units)."""
+) -> tuple[NDArray, NDArray, NDArray, Optional[tuple]]:
+    """Function to crop Sxx to within f and t bounds (in natural units).
+
+    Input
+    -----
+    Sxx: spectrogram, 2-dim NDArray
+        Assumed to be of form Sxx[f, t], where f is frequency and t is time.
+    f: Associated frequency axis to Sxx.
+    t: Associated time axis to Sxx.
+    extent: Associated imshow's extent to Sxx.
+    f_cond: Manner by which to truncate Sxx in frequency by. Example:
+        > lambda f: np.logical_and(10 < f, f < 20)
+    t_cond: Manner by which to truncate Sxx in time by.
+    """
 
     # Allow for accepting no filtering
+    if f_cond is None and t_cond is None:
+        return Sxx, f, t, extent
     if f_cond is None:
         f_cond = lambda x: np.full(np.shape(x), True)  # noqa: E731
     if t_cond is None:
         t_cond = lambda x: np.full(np.shape(x), True)  # noqa: E731
-    if f_cond is None and t_cond is None:
-        return Sxx, f, t, extent
     t_r = t_cond(t)
     f_r = f_cond(f)
     f = f[f_r]
