@@ -165,11 +165,10 @@ def cz_spectrogram_base(
         signal,
         NFFT,  # this specifies the width of the window
         axis=0
-    )[::NFFT-NOVERLAP]
-    # ZFFT can only act on 0th axis, so the sliding window is not transposed
-    sliding_windows = detrend(sliding_windows, detrend_func, axis=1)
-    sliding_windows = sliding_windows * window.reshape((-1, 1)).T
-    results = transform(sliding_windows).T
+    )[::NFFT-NOVERLAP].T
+    sliding_windows = detrend(sliding_windows, detrend_func, axis=0)
+    sliding_windows = sliding_windows * window.reshape((-1, 1))
+    results = transform(sliding_windows, axis=0)
 
     if mode == "psd":
         results = np.conj(results) * results
