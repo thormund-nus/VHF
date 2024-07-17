@@ -6,7 +6,7 @@ import sys
 module_path = str(Path(__file__).parents[1])
 if module_path not in sys.path:
     sys.path.append(module_path)
-from spectrogram_utils import spectrogram_crop
+from VHF.spec.utils import spectrogram_crop
 
 logger = getLogger("test_spectrogram_utils")
 

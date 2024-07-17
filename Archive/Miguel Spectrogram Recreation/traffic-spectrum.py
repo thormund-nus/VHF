@@ -12,13 +12,13 @@ import numpy as np
 from obspy_spectrogram_modified import spectrogram as spectrogram_data_array
 from pathlib import Path
 # from pynverse import inversefunc
-from spectrogram_utils import spectrogram_crop, trunc_cmap
 import sys
 from time import perf_counter_ns
 module_path = str(Path(__file__).parents[2])
 if module_path not in sys.path:
     sys.path.append(module_path)
 from VHF.parse import VHFparser
+from VHF.spec.utils import spectrogram_crop, trunc_cmap
 
 
 def main():
