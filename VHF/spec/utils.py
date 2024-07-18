@@ -2,21 +2,44 @@
 
 from matplotlib import colors
 from matplotlib import pyplot as plt
+from numbers import Number
 import numpy as np
+from numpy import number
 from numpy.typing import NDArray
-from scipy.signal import ShortTimeFFT
-from typing import Callable, Optional
-cond_type = Optional[Callable[[NDArray[np.float64]], NDArray[np.bool_]]]
+from typing import Callable, Optional, overload
 
 __all__ = [
     "spectrogram_crop",
     "trunc_cmap",
 ]
 
+type N = number | Number
+type cond_type = Optional[Callable[[NDArray[Number]], NDArray[np.bool_]]]
+type Extent = tuple[N, N, N, N]
+type ExtentRet = tuple[float, float, float, float]
 
+
+@overload
 def spectrogram_crop(
-    Sxx: NDArray, f: NDArray, t: NDArray, extent: Optional[tuple], f_cond: cond_type, t_cond: cond_type
-) -> tuple[NDArray, NDArray, NDArray, Optional[tuple]]:
+    Sxx: NDArray, f: NDArray, t: NDArray, extent: Optional[Extent | ExtentRet],
+    f_cond: cond_type, t_cond: cond_type
+) -> tuple[NDArray, NDArray, NDArray, ExtentRet]:
+    # Extent is generated so long as f, t, f_cond and t_cond are there
+    ...
+
+
+@overload
+def spectrogram_crop(
+    Sxx: Optional[NDArray], f: Optional[NDArray], t: Optional[NDArray],
+    extent: Optional[Extent],
+    f_cond: None, t_cond: None
+) -> tuple[Optional[NDArray], Optional[NDArray],
+           Optional[NDArray], Optional[ExtentRet]]:
+    # if f_cond and t_cond are None, Sxx, f, t, extent are passed through.
+    ...
+
+
+def spectrogram_crop(Sxx, f, t, extent, f_cond, t_cond):
     """Function to crop Sxx to within f and t bounds (in natural units).
 
     Input
