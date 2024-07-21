@@ -203,7 +203,7 @@ def cz_spectrogram(
     detrend_func=None,
     filter_window_func=None,
 ):
-    """Convenience wrapper of cz_spectrogram_base.
+    """Convenience wrapper of cz_spectrogram_base for PowerSD.
 
     Input
     -----
@@ -238,6 +238,60 @@ def cz_spectrogram(
         detrend_func=detrend_func,
         window=filter_window_func,
     )
+    kwargs: dict = {
+        "aspect": "auto",
+        "extent": extent,
+        "origin": "lower",
+    }
+
+    return spec, freq, time, kwargs
+
+
+def cz_spectrogram_amplitude(
+    signal: NDArray[np.number],
+    fn: tuple[float, float],
+    samp_rate: int,
+    win_s: float,
+    p_overlap: float,
+    detrend_func=None,
+    filter_window_func=None,
+):
+    """Convenience wrapper of cz_spectrogram_base for AmplitudeSD.
+
+    Input
+    -----
+    signal: Data to perform chirp Z spectrogram on.
+    fn: Lower and upper end of Chirp Z transform.
+    samp_rate: Sampling frequency of data.
+    win_s: Length of window time slice in seconds. Number of points will be
+        rounded off to nearest power of 2.
+    p_overlap: 0<=p<=1. Percentage overlap between windows.
+    detrend_func: Function applied to detrend data with.
+    filter_window_func: Function, such as Hanning Windows, to improve SNR in
+        spectrogram.
+
+    Output
+    ------
+    spec: Spectrogram (ASD) passed straight into imshow, has units of V/√Hz.
+    freq: Corresponding frequency axis of spectrogram.
+    time: Corresponding time axis of spectrogram.
+    imshow_kwargs: {aspect, extent, origin}
+        These can be passed straight to matplotlib's imshow's kwargs.
+    """
+    nfft: int = _nearest_pow_2(win_s * samp_rate)
+    noverlap: int = int(p_overlap * nfft)
+    logger.debug("nfft = %s", nfft)
+    logger.debug("noverlap = %s", noverlap)
+    spec, freq, time, extent = cz_spectrogram_base(
+        signal=signal,
+        fn=fn,
+        fs=samp_rate,
+        NFFT=nfft,
+        NOVERLAP=noverlap,
+        detrend_func=detrend_func,
+        window=filter_window_func,
+    )
+    spec = np.sqrt(spec)
     kwargs: dict = {
         "aspect": "auto",
         "extent": extent,
