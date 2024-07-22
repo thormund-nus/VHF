@@ -1,6 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from logging import getLogger
 from multiprocessing.pool import Pool
+from pandas import Timedelta
 from pathlib import Path
 import pytest
 import sys
@@ -181,3 +182,15 @@ def test_TraceTimer_illegal_freq():
     example_size = example_freq * 2 * 60 * 60  # 2 hours
     with pytest.raises(ValueError) as e:
         timings = TraceTimer(example_start, example_freq, example_size)
+
+
+def test_TraceTimer_run_and_plot():
+    start = datetime.fromisoformat("2024-07-22 12:56:17+08:00")
+    freq = 2000000.0
+    size = 8413185
+    timings = TraceTimer(start, freq, size)
+    expected = Timedelta(seconds=size/freq)
+
+    assert timings.trace_end - start == expected
+    assert timings.start_idx == 0
+    assert timings.end_idx == size

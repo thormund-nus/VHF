@@ -7,7 +7,7 @@ import math
 import numpy as np
 from numpy.typing import NDArray
 import os
-from pandas import Timedelta
+from pandas import Timedelta, Timestamp
 
 __all__ = [
     "VHFparser",
@@ -88,8 +88,8 @@ class TraceTimer:
         """
         self.logger = logging.getLogger("vhfparser")
 
-        self.trace_start = trace_start
-        self.trace_duration = timedelta(seconds=trace_size/trace_freq)
+        self.trace_start = Timestamp(trace_start)
+        self.trace_duration = Timedelta(microseconds=1e6*trace_size/trace_freq)
         self.sample_interval = Timedelta(seconds=1/trace_freq)
         self.trace_end = self.trace_start + self.trace_duration
         self.trace_freq = trace_freq
@@ -243,7 +243,7 @@ class TraceTimer:
     def duration_idx(self) -> int:
         """Duration index of plot window specifying number of bytes to read."""
         delta = self.plot_end - self.plot_start
-        return int(int(delta/self.sample_interval))
+        return int(delta/self.sample_interval)
 
 
 class ManifoldRollover:
