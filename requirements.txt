@@ -1,4 +1,6 @@
 tabulate
+numpy < 2.0
+pandas
 PyQt6
 PyGObject
 pytest

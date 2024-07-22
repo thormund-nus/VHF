@@ -1,6 +1,8 @@
 from datetime import datetime, timezone, timedelta
 from logging import getLogger
+from multiprocessing.pool import Pool
 from pathlib import Path
+import pytest
 import sys
 module_path = str(Path(__file__).parents[1])
 if module_path not in sys.path:
@@ -60,14 +62,6 @@ def test_TraceTimer_regular():
     change_status = timings.update_plot_timing(start=abs_start, duration=dur)
     assert not change_status
 
-def test_TraceTimer_empty():
-    example_start = datetime(2024, 1, 19, 0, 34, 36,
-                             tzinfo=timezone(timedelta(seconds=28800)))
-    example_freq = 40000  # Hz
-    example_size = example_freq * 2 * 60 * 60  # 2 hours
-    timings = TraceTimer(0, example_start, example_freq, example_size)
-    change_status = timings.update_plot_timing(start=None, end=None)
-    assert not change_status
 
 def test_TraceTimer_empty():
     example_start = datetime(2024, 1, 19, 0, 34, 36,
@@ -128,3 +122,62 @@ def test_TraceTimer_mix_OOB():
     assert timings.plot_start == expected_start
     assert timings.plot_end == expected_end
     log_timer(timings)
+
+
+def test_TraceTimer_high_freq():
+    example_start = datetime(2024, 1, 19, 0, 34, 36,
+                             tzinfo=timezone(timedelta(seconds=28800)))
+    example_freq = 2_000_000  # Hz
+    example_size = example_freq * 2 * 60 * 60  # 2 hours
+    timings = TraceTimer(example_start, example_freq, example_size)
+    expected = timedelta(hours=2)
+    assert timings.trace_end - example_start == expected
+    assert timings.start_idx == 0
+    assert timings.end_idx == example_size
+
+
+def test_TraceTimer_very_high_freq():
+    example_start = datetime(2024, 1, 19, 0, 34, 36,
+                             tzinfo=timezone(timedelta(seconds=28800)))
+    example_freq = 80_000_000  # Hz
+    example_size = example_freq * 2 * 60 * 60  # 2 hours
+    with pytest.raises(ValueError) as e:
+        timings = TraceTimer(example_start, example_freq, example_size)
+
+
+def test_TraceTimer_very_low_freq():
+    example_start = datetime(2024, 1, 19, 0, 34, 36,
+                             tzinfo=timezone(timedelta(seconds=28800)))
+    example_freq = 0.2  # Hz
+    example_size = example_freq * 2 * 60 * 60  # 2 hours
+    timings = TraceTimer(example_start, example_freq, example_size)
+    expected = timedelta(hours=2)
+    assert timings.trace_end - example_start == expected
+    assert timings.start_idx == 0
+    assert timings.end_idx == example_size
+
+
+def test_TraceTimer_allowable_freq():
+    example_start = datetime(2024, 1, 19, 0, 34, 36,
+                             tzinfo=timezone(timedelta(seconds=28800)))
+
+    def core_test(skip_param: int):
+        example_freq = 10_000_000/(skip_param-1)  # Hz
+        example_size = example_freq * 2 * 60 * 60  # 2 hours
+        timings = TraceTimer(example_start, example_freq, example_size)
+        expected = timedelta(hours=2)
+        assert timings.trace_end - example_start == expected
+        assert timings.start_idx == 0
+        assert timings.end_idx == example_size
+
+    with Pool() as p:
+        p.imap_unordered(core_test, range(4, 10_000_000))
+
+
+def test_TraceTimer_illegal_freq():
+    example_start = datetime(2024, 1, 19, 0, 34, 36,
+                             tzinfo=timezone(timedelta(seconds=28800)))
+    example_freq = 3  # Hz
+    example_size = example_freq * 2 * 60 * 60  # 2 hours
+    with pytest.raises(ValueError) as e:
+        timings = TraceTimer(example_start, example_freq, example_size)

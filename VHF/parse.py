@@ -7,6 +7,7 @@ import math
 import numpy as np
 from numpy.typing import NDArray
 import os
+from pandas import Timedelta
 
 __all__ = [
     "VHFparser",
@@ -86,13 +87,22 @@ class TraceTimer:
             which is the number of words in trace.
         """
         self.logger = logging.getLogger("vhfparser")
+
         self.trace_start = trace_start
         self.trace_duration = timedelta(seconds=trace_size/trace_freq)
-        self.sample_interval = timedelta(seconds=1/trace_freq)
+        self.sample_interval = Timedelta(seconds=1/trace_freq)
         self.trace_end = self.trace_start + self.trace_duration
         self.trace_freq = trace_freq
         self.plot_start = self.trace_start
         self.plot_end = self.trace_end
+
+        if (1e9/trace_freq != self._Timedelta_in_nanoseconds(self.sample_interval)):
+            emsg = "The sampling frequency given is too extreme for this parser to work with!"
+            raise ValueError(emsg)
+
+    def _Timedelta_in_nanoseconds(self, t: Timedelta) -> int:
+        """Get the pandas.Timedelta in nanoseconds."""
+        return 1000000000 * t.seconds + 1000 * t.microseconds + t.nanoseconds
 
     def update_plot_timing(self, **kwargs) -> bool:
         """Update TraceTimer to select trace to specified interval.
@@ -127,14 +137,14 @@ class TraceTimer:
             "end") if "end" in kwargs else None
 
         # Guard clause
+        if start is None and duration is None and end is None:
+            self.logger.warning("Nothing passed into update_plot_timing.")
+            return False
         if duration is not None and end is not None:
             self.logger.warning(
                 "Both duration and end were specified to update_plot_timing!")
             raise ValueError(
                 "Both duration and end were specified to update_plot_timing!")
-        if start is None and duration is None and end is None:
-            self.logger.warning("Nothing passed into update_plot_timing.")
-            return False
 
         start_changed: bool = False
         end_changed: bool = False
@@ -220,20 +230,20 @@ class TraceTimer:
 
     @property
     def start_idx(self) -> int:
-        """Start index relative to trace[0] for plot_start."""
+        """Start index of plot window relative to trace[0] for plot_start."""
         delta = self.plot_start - self.trace_start
         return int(delta/self.sample_interval)
 
     @property
     def end_idx(self) -> int:
-        """End index relative to file head for plot_start."""
+        """End index of plot window relative to file head for plot_start."""
         return self.start_idx + self.duration_idx
 
     @property
     def duration_idx(self) -> int:
-        """Duration index specifying number of bytes to read."""
+        """Duration index of plot window specifying number of bytes to read."""
         delta = self.plot_end - self.plot_start
-        return int(delta/self.sample_interval)
+        return int(int(delta/self.sample_interval))
 
 
 class ManifoldRollover:
