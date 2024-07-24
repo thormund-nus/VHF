@@ -194,3 +194,5 @@ Archive/20230901 Threading Speed/test_Results
 
 # Include 2024SAB
 !Archive/20240720 SAB Figures
+*.npz
+*.png
