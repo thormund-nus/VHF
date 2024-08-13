@@ -7,7 +7,6 @@ import math
 import numpy as np
 from numpy.typing import NDArray
 import os
-from pandas import Timedelta, Timestamp
 
 __all__ = [
     "VHFparser",
@@ -62,7 +61,40 @@ class BinaryVHFTrace:
 
 
 class TraceTimer:
-    """Timing and index management for VHF parser."""
+    """Timing and index management for VHF parser.
+
+    TraceTimer converts friendly datetime objects into absolute indices for the
+    given VHF file. TraceTimer records the absolute time of the trace data, and
+    its corresponding indices, and also gives the appropriate {start,end}_index
+    for user's desired plot window, given in datetime objects.
+
+    Methods
+    -----
+    update_plot_timing: Update TraceTimer's understanding of user-desired
+        plot(eqv. view) window.
+
+    Properties
+    ---
+    trace_start: datetime
+        The absolute time associated with trace[0].
+    trace_duration: timedelta
+        This is the total span of trace[:].
+        This is fallible for high sampling frequencies.
+    trace_end: datetime
+        The absolute time associated with trace[-1].
+        This is fallible for high sampling frequencies.
+    plot_start: datetime
+        The absolute time associated with window[0].
+    plot_end: datetime
+        The absolute time associated with window[-1].
+    start_idx: int
+        For the associated trace, integer to slice data from.
+    end_idx: int
+        For the associated trace, integer to slice data to.
+    duration_idx: int
+        For the associated trace, integer offset of end_idx relative to
+        start_idx.
+    """
 
     def __init__(
         self,
@@ -83,26 +115,36 @@ class TraceTimer:
             By viewing the entire binary file as being a sequence of words,
             where a word is some specified number of bytes, the trace_size is
             the value of n for
-                file = [header[0] ... header[j] trace[0] ... trace[n-1] ]
+                file = [header[0] ... header[j] trace[0] ... trace[n-1]]
             which is the number of words in trace.
         """
         self.logger = logging.getLogger("vhfparser")
 
-        self.trace_start = Timestamp(trace_start)
-        self.trace_duration = Timedelta(microseconds=1e6*trace_size/trace_freq)
-        self.sample_interval = Timedelta(seconds=1/trace_freq)
+        if trace_freq > 1e7:
+            raise ValueError("trace_freq cannot be created by VHF board")
+        tmp = int(tmp2 := (2e7/trace_freq))
+        if tmp != tmp2:
+            raise ValueError("trace_freq cannot be created by VHF board; Skip parameter was fractional?")
+
+        self.trace_start = trace_start
+        self._trace_start_ns = int(self._dt_to_ns(trace_start))
+        self.trace_duration = timedelta(microseconds=1e6*trace_size/trace_freq)
+        self._trace_duration_ns = int(1e9*trace_size/trace_freq)
+        self.sample_interval = timedelta(microseconds=1e6/trace_freq)  # this is still fallible
+        self._sample_interval_ns: float = 1e9/trace_freq
         self.trace_end = self.trace_start + self.trace_duration
+        self._trace_end_ns: int = self._trace_start_ns + self._trace_duration_ns
         self.trace_freq = trace_freq
         self.plot_start = self.trace_start
         self.plot_end = self.trace_end
+        self._plot_start_ns: int = self._trace_start_ns
+        self._plot_end_ns: int = self._trace_end_ns
 
-        if (1e9/trace_freq != self._Timedelta_in_nanoseconds(self.sample_interval)):
-            emsg = "The sampling frequency given is too extreme for this parser to work with!"
-            raise ValueError(emsg)
-
-    def _Timedelta_in_nanoseconds(self, t: Timedelta) -> int:
-        """Get the pandas.Timedelta in nanoseconds."""
-        return 1000000000 * t.seconds + 1000 * t.microseconds + t.nanoseconds
+    def __str__(self) -> str:
+        return f"{self.trace_start = }\n" \
+            f"{self.trace_duration = }\n" \
+            f"{self.sample_interval = }\n" \
+            f"{self.duration_idx = }"
 
     def update_plot_timing(self, **kwargs) -> bool:
         """Update TraceTimer to select trace to specified interval.
@@ -170,6 +212,7 @@ class TraceTimer:
                 start = min(max(self.trace_start, start), self.trace_end)
             start_changed = start != self.plot_start
             self.plot_start = start
+            self._plot_start_ns = self._dt_to_ns(start)
 
         # If duration is used, we calculate the desired end time before seeing
         # if it needs to be coerced to within the bounds of the trace
@@ -193,8 +236,15 @@ class TraceTimer:
                 end = max(min(self.trace_end, end), self.trace_start)
             end_changed = end != self.plot_end
             self.plot_end = end
+            self._plot_end_ns = self._dt_to_ns(end)
 
         return start_changed or end_changed
+
+    def _dt_to_ns(self, t: datetime) -> int:
+        """From datetime.datetime to number of ns from some t=0."""
+        # We shouldn't be needing to check for fractional components despite
+        # timestamp being a float.
+        return int(t.timestamp() * 1e9)
 
     def _datetime_aware(self, dt: datetime) -> bool:
         """Determine if a datetime object is aware, or otherwise (naive)."""
@@ -226,13 +276,13 @@ class TraceTimer:
     @property
     def trace_duration_idx(self) -> int:
         """Length of trace"""
-        return int(self.trace_duration/self.sample_interval)
+        return int(self._trace_duration_ns/self._sample_interval_ns)
 
     @property
     def start_idx(self) -> int:
         """Start index of plot window relative to trace[0] for plot_start."""
-        delta = self.plot_start - self.trace_start
-        return int(delta/self.sample_interval)
+        delta = self._plot_start_ns - self._trace_start_ns
+        return int(delta/self._sample_interval_ns)
 
     @property
     def end_idx(self) -> int:
@@ -242,8 +292,8 @@ class TraceTimer:
     @property
     def duration_idx(self) -> int:
         """Duration index of plot window specifying number of bytes to read."""
-        delta = self.plot_end - self.plot_start
-        return int(delta/self.sample_interval)
+        delta = self._plot_end_ns - self._plot_start_ns
+        return int(delta/self._sample_interval_ns)
 
 
 class ManifoldRollover:
