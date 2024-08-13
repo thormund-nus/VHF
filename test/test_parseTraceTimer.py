@@ -193,3 +193,61 @@ def test_TraceTimer_run_and_plot():
     assert timings._trace_end_ns - int(start.timestamp()*1e9) == expected
     assert timings.start_idx == 0
     assert timings.end_idx == size
+
+
+def test_TraceTimer_update_start_only():
+    example_start = datetime(2024, 1, 1, 9, 15, 00,
+                             tzinfo=timezone(timedelta(seconds=28800)))
+    example_freq = 40000  # Hz
+    example_size = example_freq * 2 * 60 * 60  # 2 hours
+    timings = TraceTimer(example_start, example_freq, example_size)
+    user_start = example_start - timedelta(minutes=15)
+    user_dur = timedelta(hours=1)
+    expected_start = example_start
+    expected_end = expected_start + timedelta(minutes=45)
+
+    change_status = timings.update_plot_timing(
+        start=user_start, duration=user_dur)
+    assert change_status
+    assert timings.plot_start == expected_start
+    assert timings.plot_end == expected_end
+
+    # Now we update only the start, to be more than the prior set end
+    user_start = example_start + timedelta(hours=1, minutes=15)
+    expected_start = user_start
+    expected_end = user_start
+
+    change_status = timings.update_plot_timing(start=user_start)
+    assert change_status
+    assert timings.plot_start <= timings.plot_end
+    assert timings.plot_start == expected_start
+    assert timings.plot_end == expected_end
+
+
+def test_TraceTimer_update_end_only():
+    example_start = datetime(2024, 1, 1, 9, 15, 00,
+                             tzinfo=timezone(timedelta(seconds=28800)))
+    example_freq = 40000  # Hz
+    example_size = example_freq * 2 * 60 * 60  # 2 hours
+    timings = TraceTimer(example_start, example_freq, example_size)
+    user_start = example_start + timedelta(minutes=15)
+    user_dur = timedelta(hours=1)
+    expected_start = user_start
+    expected_end = expected_start + user_dur
+
+    change_status = timings.update_plot_timing(
+        start=user_start, duration=user_dur)
+    assert change_status
+    assert timings.plot_start == expected_start
+    assert timings.plot_end == expected_end
+
+    # Now we update only the end, to be less than the prior set start
+    user_end = example_start + timedelta(minutes=10)
+    expected_start = example_start
+    expected_end = user_end
+
+    change_status = timings.update_plot_timing(end=user_end)
+    assert change_status
+    assert timings.plot_start <= timings.plot_end
+    assert timings.plot_start == expected_start
+    assert timings.plot_end == expected_end
