@@ -5,9 +5,8 @@ from logging import getLogger
 from multiprocessing import cpu_count, Lock, Pool
 from multiprocessing import current_process as current_proc
 import numpy as np
-from numpy import random
+from numpy import datetime64, random, timedelta64
 from numpy.typing import NDArray
-from pandas import Timestamp
 from pathlib import Path
 from scipy.signal import decimate
 import sys
@@ -24,11 +23,11 @@ SEARCH_FILES = list(START.glob("2024-01-19*.bin"))
 SEARCH_FILES.extend(list(START.glob("2024-01-20*.bin")))
 SEARCH_FILES.extend(list(START.glob("2024-01-21*.bin")))
 SEARCH_FILES.extend(list(START.glob("2024-01-22*.bin")))
-TIME_START = np.datetime64(datetime.fromisoformat("20240119T00:30:00"))
-TIME_END = np.datetime64(datetime.fromisoformat("20240122T15:45:00"))
-INTERVAL = np.timedelta64(15, "m")
+TIME_START = datetime.fromisoformat("20240119T00:30:00+0800")
+TIME_END = datetime.fromisoformat("20240122T15:45:00+0800")
+INTERVAL = timedelta(minutes=15)
 FILES = SEARCH_FILES
-NPY_FILE = Path("SAB_Collated_JanData.npz")
+NPY_FILE = Path("dbg_SAB_Collated_JanData.npz")
 SPECGRAM_TOTAL_WINDOW = timedelta(seconds=120)  # seconds, per batch of update_plot_timing
 SPECGRAM_WINDOW = 6  # seconds, width of sliding window
 
@@ -42,11 +41,11 @@ def worker(args):
     return averaging_spectrogram(args)
 
 @cache
-def trace_endpoints(file) -> tuple[Timestamp, Timestamp]:
+def trace_endpoints(file) -> tuple[datetime, datetime]:
     """Get VHFparser.(start,end)_time as a tuple. Cached for good vibes."""
     p = VHFparser(file, headers_only=True)
-    start_time: Timestamp = p.timings.trace_start
-    end_time = p.timings.trace_end
+    start_time: datetime = p.timings.trace_start
+    end_time: datetime = p.timings.trace_end
     return (start_time, end_time)
 
 def get_bin_files(time: np.datetime64) -> list[Path]:
@@ -57,12 +56,11 @@ def get_bin_files(time: np.datetime64) -> list[Path]:
     """
 
     def time_is_located_within_file_endpoints(time: np.datetime64, file):
-        start_time, end_time = trace_endpoints(file)
-        time = Timestamp(time, tzinfo=timezone(offset=timedelta(hours=8)))
+        start_time, end_time = map(datetime64, map(aware_to_naive, trace_endpoints(file)))
         return start_time <= time and time <= end_time
 
     start_side = list(filter(lambda x: time_is_located_within_file_endpoints(time, x), FILES))
-    end_side = list(filter(lambda x: time_is_located_within_file_endpoints(time+INTERVAL, x), FILES))
+    end_side = list(filter(lambda x: time_is_located_within_file_endpoints(time+timedelta64(INTERVAL), x), FILES))
     result: list[Path] = start_side
     result.extend(end_side)
     result: set[Path] = set(result)
@@ -71,14 +69,14 @@ def get_bin_files(time: np.datetime64) -> list[Path]:
         pass
     if len(result) == 1:
         start, end = trace_endpoints(min(result))  # stupid way to access set item without pop
-        time: Timestamp = Timestamp(time, tzinfo=timezone(offset=timedelta(hours=8)))
 
+        start, end = map(datetime64, map(aware_to_naive, [start, end]))
         # pop if overlap is less than helf
-        if start <= time + INTERVAL <= end:
-            if start - time > INTERVAL/2:
+        if start <= time + timedelta64(INTERVAL) <= end:
+            if start - time > timedelta64(INTERVAL)/2:
                 result.pop
         elif start <= time <= end:
-            if end - time < INTERVAL/2:
+            if end - time < timedelta64(INTERVAL)/2:
                 result.pop
 
     return sorted(list(result))
@@ -87,7 +85,6 @@ def get_bin_files(time: np.datetime64) -> list[Path]:
 def averaging_spectrogram(time: np.datetime64):
     """We get the spectrogram for (time, time+INTERVAL), and save into npy file."""
     files = get_bin_files(time)
-    time = Timestamp(time, tzinfo=timezone(offset=timedelta(hours=8)))
     logger.debug("Proc %s got files = %s", current_proc().name, map(lambda x: x.name, files))
     if len(files) == 0:
         return
@@ -96,7 +93,7 @@ def averaging_spectrogram(time: np.datetime64):
     p_freq_old = None
     p_freq = None
 
-    iteration_end = time + INTERVAL
+    iteration_end = time + timedelta64(INTERVAL)
     current_file = files.pop(0)
     parse = VHFparser(current_file, headers_only=True)
     current_file_start = parse.timings.trace_start
@@ -107,9 +104,15 @@ def averaging_spectrogram(time: np.datetime64):
 
 
     while plot_start < iteration_end and current_file is not None:
-        plot_start = max(plot_start, current_file_start+timedelta(seconds=1))  # clamp to at least the first second after any trace
-        plot_end = plot_start + SPECGRAM_TOTAL_WINDOW
-        parse.update_plot_timing(start=plot_start, end=plot_end)
+        plot_start = max(
+            plot_start,
+            datetime64(aware_to_naive(current_file_start+timedelta(seconds=1)))
+        )  # clamp to at least the first second after any trace
+        plot_end = plot_start + timedelta64(SPECGRAM_TOTAL_WINDOW)
+        parse.update_plot_timing(
+            start=datetime(plot_start, tzinfo=timedelta(hours=8)),  # fails
+            end=datetime(plot_end, tzinfo=timedelta(hours=8))
+        )
         phase = parse.reduced_phase
         freq = parse.header["sampling freq"]
 
@@ -243,8 +246,25 @@ def main_linear():
         worker(t)
 
 
+def aware_to_naive(t: datetime) -> datetime:
+    """Replace tzinfo to None while keeping the hour parameter, mimicking local time.
+
+    This is needed because np.datetime64 otherwise takes the UTC+0 equivalent of t.
+    """
+    offset_tz: tzinfo = t.tzinfo
+    if offset_tz is not None:
+        offset = offset_tz.utcoffset(t)
+    else:
+        offset = timedelta(hours=0)
+    result = t.astimezone(timezone(timedelta(hours=0))) + offset
+    return result.replace(tzinfo=None)
+
+
 def timings_left() -> NDArray[np.datetime64]:
-    timings = np.arange(TIME_START, TIME_END, INTERVAL)
+    """Array of time-axis data points still needed."""
+    # np.arange will preferably generate np.datetime64 from TIME_START: datetime.datetime
+    # this will consequently cast from TZ+X to TZ+0.
+    timings = np.arange(aware_to_naive(TIME_START), aware_to_naive(TIME_END), INTERVAL)
 
     with open(NPY_FILE, 'rb+') as file:
         try:
@@ -257,10 +277,6 @@ def timings_left() -> NDArray[np.datetime64]:
             times_arr = np.array([])
 
     times_arr = np.sort(times_arr.flatten())
-    times_arr = np.fromiter(map(
-        lambda time: time.tz_localize(None).to_datetime64(),
-        times_arr
-    ), dtype=object)
     try:
         logger.debug("From file, first and last (temporal) times found to have already been written: %s, %s", min(times_arr), max(times_arr))
     except ValueError:
