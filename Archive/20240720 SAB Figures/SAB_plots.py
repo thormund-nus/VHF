@@ -8,7 +8,6 @@ import matplotlib.dates as mdates
 import matplotlib.ticker as mticker
 import numpy as np
 from numpy import datetime64
-from pandas import Timestamp
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
@@ -36,9 +35,6 @@ def plot_data():
 
     # 2. Clean data up into matplotlib friendlier terms
     mean, std = ampls[:, 0, FREQ_IDX],  ampls[:, 1, FREQ_IDX]
-    times = np.fromiter(map(
-        lambda x: x.tz_localize(None).to_datetime64(), times
-    ), dtype=object)
     lower = np.power(10, (mean-std)/20)
     upper = np.power(10, (mean+std)/20)
     mean = np.power(10, mean/20)
@@ -86,13 +82,13 @@ def fig_size_etc(case: str):
 
 
 def extract_time_as_datetime_from_NDarr_of_npdatetime64_w_dtype_obj(x):
-    x = np.fromiter(map(Timestamp, x), dtype=Timestamp)
-    x = np.fromiter(map(lambda y: y.to_pydatetime(), x), dtype=datetime.datetime)
+    """Matplotlib requires that the x-axis be datetime and not time objects.
+    We are filtering down from what is an NDArray of datetime64.
+    To ensure a cleaner plot we set all object to having the same date, so that
+    matplotlib doesn't extend the x-axis for showing 4 days.
+    """
     arbitrary_day = datetime.date(1970, 1, 1)
-    return np.fromiter(
-        map(lambda y: datetime.datetime.combine(arbitrary_day, y.time()), x),
-        dtype=datetime.time
-    )
+    return list(map(lambda y: datetime.datetime.combine(arbitrary_day, y.time()), x))
 
 
 def main(err_bars: bool = False):
@@ -202,9 +198,8 @@ def qe_plot_data():
     assert freqs[0, FREQ_IDX] == FREQ_UNDER_PLOT
 
     # 2. Clean data up into matplotlib friendlier terms
-    times = np.fromiter(map(
-        lambda x: x.tz_localize(None).to_datetime64(), times
-    ), dtype=object)
+    # there is nothing
+    
     # 3. sort in time
     idx_sort = np.argsort(times)
     times = times[idx_sort]
