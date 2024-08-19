@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, timezone, tzinfo
-from functools import cache
+from functools import cache, partial
 import logging
 from logging import getLogger
 from multiprocessing import cpu_count, Lock, Pool
 from multiprocessing import current_process as current_proc
+from multiprocessing.managers import SyncManager, DictProxy
 import numpy as np
-from numpy import datetime64, random, timedelta64
+from numpy import random
 from numpy.typing import NDArray
 from pathlib import Path
 from scipy.signal import decimate
@@ -37,10 +38,12 @@ def init_pool_processes(the_lock):
     global lock
     lock = the_lock
 
-def worker(args):
+def worker(timings, managed_list):
     """Currently, we demand that workers can only take 1 arg for imap."""
-    logger.info("worker called with args: %s", args)
-    return averaging_spectrogram(args)
+    # first argument has to be that for pool.imap...
+    logger.info("worker called with managed_list of len: %s", len(managed_list))
+    logger.info("worker called with args: %s", timings)
+    return averaging_spectrogram(managed_list, timings)
 
 @cache
 def trace_endpoints(file) -> tuple[datetime, datetime]:
@@ -83,7 +86,24 @@ def get_bin_files(time: datetime) -> list[Path]:
     return sorted(list(result))
 
 
-def averaging_spectrogram(time: datetime):
+def get_parsed(managed_list: DictProxy, name: Path):
+    """Checks against the SyncManager's shared Dict as to if name has been
+    first-pass parsed before."""
+    if name not in managed_list.keys():
+        logger.info("Cache miss on path = %s", name)
+        result = VHFparser(name, headers_only=True)
+        result._pre_trace_parsing()
+        managed_list.update({name: result})
+    else:
+        logger.info("Cache hit on path = %s", name)
+        result: VHFparser = managed_list[name]
+        logger.debug("result.plot_window = %s", result.timings.plot_start)
+        if result.timings.plot_start - result.timings.trace_start > timedelta(seconds=6):
+            logger.warning("plot_start much larger than trace_start! trace_start = %s", result.timings.trace_start)
+    return result
+
+
+def averaging_spectrogram(managed_list: DictProxy, time: datetime):
     """We get the spectrogram for (time, time+INTERVAL), and save into npy file."""
     files = get_bin_files(time)
     logger.debug("Proc %s got files = %s", current_proc().name, map(lambda x: x.name, files))
@@ -96,7 +116,7 @@ def averaging_spectrogram(time: datetime):
 
     iteration_end = time + INTERVAL
     current_file = files.pop(0)
-    parse = VHFparser(current_file, headers_only=True)
+    parse = get_parsed(managed_list, current_file)
     current_file_start = parse.timings.trace_start
     current_file_end = parse.timings.trace_end
     plot_start = time
@@ -160,7 +180,7 @@ def averaging_spectrogram(time: datetime):
                 current_file = files.pop(0)
             if current_file is not None:
                 logger.debug("Proc %s fetched next file", current_proc().name)
-                parse = VHFparser(current_file, headers_only=True)
+                parse = get_parsed(managed_list, current_file)
                 current_file_start = parse.timings.trace_start
                 current_file_end = parse.timings.trace_end
                 p_freq_old = p_freq
@@ -229,14 +249,21 @@ def main():
     timings: Iterable[datetime] = timings_left()
     random.shuffle(timings)
 
+    global_cm = SyncManager()
+    global_cm.start()  # there is no With block for SyncManager from what it seems
+    GLOBAL_CACHE = global_cm.dict()
+    partial_worker = partial(worker, managed_list=GLOBAL_CACHE)
+
     npz_lock = Lock()
-    with Pool(cpu_count()-1, initializer=init_pool_processes, initargs=(npz_lock,)) as pool:
+    nproc = cpu_count() - 1
+    with Pool(processes=nproc, initializer=init_pool_processes, initargs=(npz_lock,)) as pool:
         p = pool.imap_unordered(
-            worker,
-            # pair_lock_with_time(timings, mutex_lock)
+            partial_worker,
             timings
         )
         y = list(p)  # we need something to iteratively consume up the imap to drive the pool
+
+    global_cm.shutdown()
 
 def main_linear():
     """Perform digesting of files down into averaged spectrograms without Pool."""
@@ -245,8 +272,9 @@ def main_linear():
     random.shuffle(timings)
 
     lock = Lock()
+    global_cache = dict()
     for t in timings:
-        worker(t)
+        worker(t, global_cache)
 
 
 def aware_to_naive(t: datetime) -> datetime:
