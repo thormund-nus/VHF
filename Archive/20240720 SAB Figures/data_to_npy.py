@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone, tzinfo
 from functools import cache, partial
 import logging
@@ -100,6 +101,7 @@ def get_parsed(managed_list: DictProxy, name: Path):
         logger.debug("result.plot_window = %s", result.timings.plot_start)
         if result.timings.plot_start - result.timings.trace_start > timedelta(seconds=6):
             logger.warning("plot_start much larger than trace_start! trace_start = %s", result.timings.trace_start)
+    result = deepcopy(result)
     return result
 
 
