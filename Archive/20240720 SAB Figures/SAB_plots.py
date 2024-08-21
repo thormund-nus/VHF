@@ -1,6 +1,5 @@
-from datetime import date
-import datetime
-import datetime as dt
+from datetime import date, datetime, timedelta
+from data_to_npy import aware_to_naive
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.dates import DateFormatter
@@ -10,6 +9,8 @@ import numpy as np
 from numpy import datetime64
 from pathlib import Path
 
+ARBITRARY_DAY = date(1970, 1, 1)
+ARBITRARY_DATETIME = datetime(1970, 1, 1)
 BASE_DIR = Path(__file__).parent
 NPZ_FILE = BASE_DIR.joinpath("./SAB_Collated_JanData.npz")
 FREQ_IDX = 600
@@ -50,8 +51,8 @@ def plot_data():
 
 
 def is_day(day: date):
-    def func(t: datetime64):
-        t = t.astype('datetime64[D]')
+    def func(x: list[datetime]):
+        t = np.fromiter(map(aware_to_naive, x), dtype='datetime64[D]')
         t_year = t.astype('datetime64[Y]').astype(int) + 1970
         t_month =  t.astype('datetime64[M]').astype(int) % 12 + 1
         t_date = t - t.astype('datetime64[M]') + 1
@@ -87,8 +88,7 @@ def extract_time_as_datetime_from_NDarr_of_npdatetime64_w_dtype_obj(x):
     To ensure a cleaner plot we set all object to having the same date, so that
     matplotlib doesn't extend the x-axis for showing 4 days.
     """
-    arbitrary_day = datetime.date(1970, 1, 1)
-    return list(map(lambda y: datetime.datetime.combine(arbitrary_day, y.time()), x))
+    return list(map(lambda y: datetime.combine(ARBITRARY_DAY, y.time()), x))
 
 
 def main(err_bars: bool = False):
@@ -148,19 +148,14 @@ def main(err_bars: bool = False):
             )
 
         # a. set x_axis
-        # ax.xaxis.set_major_formatter(DateFormatter('%H:%M'))
-        # ax.yaxis.set_major_formatter(mticker.ScalarFormatter())
-        # ax.yaxis.set_minor_formatter(mticker.ScalarFormatter())
-        # ax.yaxis.set_major_formatter(mticker.StrMethodFormatter("{x:.2f}"))
-        # ax.yaxis.set_minor_formatter(mticker.StrMethodFormatter("{x:.2f}"))
         dfmt = mdates.DateFormatter("%-I%P")
-        plt.xlim(dt.datetime(1970,1,1), dt.datetime(1970,1,2))
+        plt.xlim(ARBITRARY_DATETIME, ARBITRARY_DATETIME+timedelta(hours=24))
         plt.xticks([
-            dt.datetime(1970, 1, 1, 0),
-            dt.datetime(1970, 1, 1, 6),
-            dt.datetime(1970, 1, 1, 12),
-            dt.datetime(1970, 1, 1, 18),
-            dt.datetime(1970, 1, 2),
+            datetime(1970, 1, 1, 0),
+            datetime(1970, 1, 1, 6),
+            datetime(1970, 1, 1, 12),
+            datetime(1970, 1, 1, 18),
+            datetime(1970, 1, 2),
         ])
         ax.xaxis.set_major_formatter(dfmt)
         plt.legend(["Friday", "Saturday", "Sunday", "Monday"], loc="lower right", prop={"size":8}, ncol=2)

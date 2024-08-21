@@ -62,7 +62,7 @@ def get_bin_files(time: datetime) -> list[Path]:
     """
 
     def time_is_located_within_file_endpoints(time: datetime, file):
-        start_time, end_time = map(aware_to_naive, trace_endpoints(file))
+        start_time, end_time = trace_endpoints(file)
         return start_time <= time and time <= end_time
 
     start_side = list(filter(lambda x: time_is_located_within_file_endpoints(time, x), FILES))
@@ -75,7 +75,6 @@ def get_bin_files(time: datetime) -> list[Path]:
         pass
     if len(result) == 1:
         start, end = trace_endpoints(min(result))  # stupid way to access set item without pop
-        start, end = map(aware_to_naive, [start, end])
         # pop if overlap is less than helf
         if start <= time + INTERVAL <= end:
             if start - time > INTERVAL/2:
@@ -129,12 +128,12 @@ def averaging_spectrogram(managed_list: DictProxy, time: datetime):
     while plot_start < iteration_end and current_file is not None:
         plot_start = max(
             plot_start,
-            aware_to_naive(current_file_start+timedelta(seconds=1))
+            current_file_start+timedelta(seconds=1)
         )  # clamp to at least the first second after any trace
         plot_end = plot_start + SPECGRAM_TOTAL_WINDOW
         parse.update_plot_timing(
-            start=plot_start.astimezone(tz=timezone(timedelta(hours=8))),
-            end=plot_end.astimezone(tz=timezone(timedelta(hours=8)))
+            start=plot_start,
+            end=plot_end
         )
         phase = parse.reduced_phase
         freq = parse.header["sampling freq"]
@@ -174,7 +173,7 @@ def averaging_spectrogram(managed_list: DictProxy, time: datetime):
         # second addition is to move forward by one p-overlap
         plot_start = plot_end - 0.9*timedelta(seconds=SPECGRAM_WINDOW)
         logger.debug("Proc %s moving onto the next iteration of spectrogram window", current_proc().name)
-        if plot_start > aware_to_naive(current_file_end):
+        if plot_start > current_file_end:
             logger.debug("Proc %s attempting to fetch next file", current_proc().name)
             if len(files) == 0:
                 current_file = None
@@ -204,6 +203,7 @@ def averaging_spectrogram(managed_list: DictProxy, time: datetime):
     averaging_spectrogram_write(time, freqs, avgSxx)
     logger.debug("Proc %s moving onto next timer!", current_proc().name)
     return
+
 
 def averaging_spectrogram_write(time: datetime, freqs: NDArray, avgSxx: NDArray):
     """Takes the data pulled out from the files for specified time and writes into npy file."""
@@ -245,6 +245,7 @@ def averaging_spectrogram_write_core(time, freqs: NDArray, avgSxx: NDArray):
         np.savez(file, times=times_arr, freqs=freqs_arr, ampls=ampls_arr)
         logger.info("%s Save done", current_proc().name)
 
+
 def main():
     """Perform digesting of files down into averaged spectrograms."""
     print(f"We are now running for {len(SEARCH_FILES) = }")
@@ -266,6 +267,7 @@ def main():
         y = list(p)  # we need something to iteratively consume up the imap to drive the pool
 
     global_cm.shutdown()
+
 
 def main_linear():
     """Perform digesting of files down into averaged spectrograms without Pool."""
@@ -291,6 +293,11 @@ def aware_to_naive(t: datetime) -> datetime:
         offset = timedelta(hours=0)
     result = t.astimezone(timezone(timedelta(hours=0))) + offset
     return result.replace(tzinfo=None)
+
+
+def naive_to_aware(t: datetime, h:int=8) -> datetime:
+    """Replace tzinfo to be aware."""
+    return t.astimezone(timezone(timedelta(hours=h)))
 
 
 def datetime64_to_dt(t: np.datetime64) -> datetime:
@@ -320,7 +327,9 @@ def timings_left() -> list[datetime]:
     except ValueError:
         logger.debug("Nothing from file")
     only_in_timings = np.setdiff1d(timings, times_arr)
-    only_in_timings = list(map(datetime64_to_dt, only_in_timings))  # putting this in an NDArray only undoes our work
+    only_in_timings = map(datetime64_to_dt, only_in_timings)  # putting this in an NDArray only undoes our work
+    only_in_timings = map(naive_to_aware, only_in_timings) 
+    only_in_timings = list(only_in_timings)
     logger.info("Remaining times found needed doing: only_in_timings = %s", only_in_timings)
     return only_in_timings
 
