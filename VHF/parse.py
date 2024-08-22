@@ -188,6 +188,26 @@ class TraceTimer:
             raise ValueError(
                 "Both duration and end were specified to update_plot_timing!")
 
+        # Directionality guard clauses
+        if duration is not None and duration.total_seconds() < 0:
+            raise ValueError("Negative duration received!")
+        if start is not None and end is not None:
+            if start < end:
+                raise ValueError("Provided end is before provided start!")
+
+        # Strategy:
+        # Usual case: Trace Start <= Plot Start <= Plot End <= Trace End
+        # Expected OOB cases: Trace End <= Plot End will be coerced into usual
+        #    case by Plot End = Trace End; Similar for Plot Start
+        # Disgusting user input case: New Plot End < Old Plot Start is coerced
+        #     by having the newest user input take the largest precedence, ie:
+        #     1. Coerce new Plot End by Trace Start <= Plot End <= Trace End;
+        #     followed by
+        #     2. Plot Start = Plot End;
+        #     which ensures the usual case, with priority from most recent user
+        #     input.
+        #     Similar logic to be done for New Plot Start > Old Plot End
+
         start_changed: bool = False
         end_changed: bool = False
 
@@ -237,6 +257,22 @@ class TraceTimer:
             end_changed = end != self.plot_end
             self.plot_end = end
             self._plot_end_ns = self._dt_to_ns(end)
+
+        # If start_changed XOR end_changed, we have to assert start<end
+        # TBD: How do we enforce the meaning of start/end_changed ??
+        if start is not None and end is None:
+            # Clamp start towards end if end was less than start
+            if self.plot_end < self.plot_start:
+                self.plot_end = self.plot_start
+                self._plot_end_ns = self._plot_start_ns
+                end_changed = True
+        elif start is None and end is not None:
+            # Clamp end towards start if start was more than end
+            if self.plot_end < self.plot_start:
+                self.plot_start = self.plot_end
+                self._plot_start_ns = self._plot_end_ns
+                start_changed = True
+                # Why does Pyright insist this block is not reachable??
 
         return start_changed or end_changed
 

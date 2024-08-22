@@ -223,6 +223,16 @@ def test_TraceTimer_update_start_only():
     assert timings.plot_start == expected_start
     assert timings.plot_end == expected_end
 
+    # Check that start and end are set to trace_end if user_start > trace_end
+    user_start = example_start + timedelta(hours=3, minutes=15)
+    expected_start = example_start + timedelta(hours=2)
+    expected_end = expected_start
+    change_status = timings.update_plot_timing(start=user_start)
+    assert change_status
+    assert timings.plot_start <= timings.plot_end
+    assert timings.plot_start == expected_start
+    assert timings.plot_end == expected_end
+
 
 def test_TraceTimer_update_end_only():
     example_start = datetime(2024, 1, 1, 9, 15, 00,
@@ -243,9 +253,19 @@ def test_TraceTimer_update_end_only():
 
     # Now we update only the end, to be less than the prior set start
     user_end = example_start + timedelta(minutes=10)
-    expected_start = example_start
+    expected_start = user_end
     expected_end = user_end
 
+    change_status = timings.update_plot_timing(end=user_end)
+    assert change_status
+    assert timings.plot_start <= timings.plot_end
+    assert timings.plot_start == expected_start
+    assert timings.plot_end == expected_end
+
+    # Check that start and end are set to trace_end if trace_start > user_end
+    user_end = example_start - timedelta(minutes=10)
+    expected_start = example_start
+    expected_end = example_start
     change_status = timings.update_plot_timing(end=user_end)
     assert change_status
     assert timings.plot_start <= timings.plot_end
