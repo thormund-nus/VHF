@@ -146,14 +146,19 @@ class TraceTimer:
             f"{self.sample_interval = }\n" \
             f"{self.duration_idx = }"
 
-    def update_plot_timing(self, **kwargs) -> bool:
+    def update_plot_timing(
+        self,
+        start: Optional[datetime | timedelta] = None,
+        duration: Optional[timedelta] = None,
+        end: Optional[datetime] = None,
+    ) -> bool:
         """Update TraceTimer to select trace to specified interval.
 
         Output
         ------
         bool: True if plotting region has been changed.
 
-        Parameters (**kwargs)
+        Parameters
         ----------
         start: Optional[datetime | timedelta]
             If start is absolute, plot_start will be set to
@@ -170,14 +175,6 @@ class TraceTimer:
         end: Optional[datetime]
             Specify plot end. Will still be bounded to trace end.
         """
-        # Populate from kwargs
-        start: Optional[datetime | timedelta] = kwargs.get(
-            "start") if "start" in kwargs else None
-        duration: Optional[timedelta] = kwargs.get(
-            "duration") if "duration" in kwargs else None
-        end: Optional[datetime] = kwargs.get(
-            "end") if "end" in kwargs else None
-
         # Guard clause
         if start is None and duration is None and end is None:
             self.logger.warning("Nothing passed into update_plot_timing.")
@@ -191,9 +188,6 @@ class TraceTimer:
         # Directionality guard clauses
         if duration is not None and duration.total_seconds() < 0:
             raise ValueError("Negative duration received!")
-        if start is not None and end is not None:
-            if start < end:
-                raise ValueError("Provided end is before provided start!")
 
         # Strategy:
         # Usual case: Trace Start <= Plot Start <= Plot End <= Trace End
@@ -225,6 +219,13 @@ class TraceTimer:
         if start is not None:
             if isinstance(start, timedelta):
                 start: datetime = self.trace_start + start
+
+            # Directionality guard clauses (which can only be done after start
+            # is in datetime)
+            if start is not None and end is not None:
+                if start < end:
+                    raise ValueError("Provided end is before provided start!")
+
             # Coerce start to be within trace
             if start > self.trace_end or start < self.trace_start:
                 self.logger.warning(
@@ -272,7 +273,6 @@ class TraceTimer:
                 self.plot_start = self.plot_end
                 self._plot_start_ns = self._plot_end_ns
                 start_changed = True
-                # Why does Pyright insist this block is not reachable??
 
         return start_changed or end_changed
 
