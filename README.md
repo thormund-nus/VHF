@@ -1,5 +1,7 @@
 # Python wrapper for VHF (svn) commands
 
+[![DOI](https://zenodo.org/badge/618415525.svg)](https://zenodo.org/doi/10.5281/zenodo.13375529)
+
 *Author: Thormund*  
 *Date: 22 March 2023*
 
@@ -90,4 +92,3 @@ To check if it has been mounted, use `mount | grep nfs`. An example `/etc/fstab`
 -----
 192.168.109.131:/volume1/fibre_sensing	/mnt/nas-fibre-sensing	nfs defaults,_netdev,timeo=900,retrans=5,sec=sys,vers=4,x-systemd.automount,x-systemd.mount-timeout=15,x-systemd.idle-timeout=10min,nofail 0 0
 ```
-
