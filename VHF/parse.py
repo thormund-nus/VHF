@@ -519,7 +519,7 @@ class VHFparser:
     Init arguments
     -----
     filename: io.BufferedRandom | str | os.PathLike
-        Anything that yields a seeakeble stream containing VHF-board generated
+        Anything that yields a seekable stream containing VHF-board generated
         binary data. For example, stdout cannot be fed into this parser, as it
         is not seekable.
     headers_only: bool = False
