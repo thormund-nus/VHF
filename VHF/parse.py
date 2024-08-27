@@ -767,15 +767,16 @@ class VHFparser:
             self.header["Time start"] = datetime.fromisoformat(iso_str)
             try:
                 next(filtered_header)
-                self.logger.warn("More than one `recording start` found in header.")
+                self.logger.warning("More than one `recording start` found in header.")
             except StopIteration:
                 pass
             except Exception as e:
                 self.logger.error("Exception encountered: %s", e)
                 self.logger.error("", exc_info=True)
         else:
-            self.logger.warn("Command date and time could not be found within header. Attempting to obtain date and time from filename.")
+            self.logger.warning("Command date and time could not be found within header. Attempting to obtain date and time from filename.")
             # TODO: obtain from filename.
+            self.logger.error("Reading details from filename has not been implemented!")
 
         for k, v in self.header.items():
             try:
