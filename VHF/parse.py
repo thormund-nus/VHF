@@ -223,7 +223,7 @@ class TraceTimer:
             # Directionality guard clauses (which can only be done after start
             # is in datetime)
             if start is not None and end is not None:
-                if start < end:
+                if start > end:
                     raise ValueError("Provided end is before provided start!")
 
             # Coerce start to be within trace
