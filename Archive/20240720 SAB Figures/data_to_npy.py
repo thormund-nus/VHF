@@ -7,12 +7,11 @@ from multiprocessing import cpu_count, Lock, Pool
 from multiprocessing import current_process as current_proc
 from multiprocessing.managers import SyncManager, DictProxy
 import numpy as np
-from numpy import random
 from numpy.typing import NDArray
 from pathlib import Path
 from scipy.signal import decimate
 import sys
-from typing import Iterable
+from typing import Iterable, Optional
 module_path = str(Path(__file__).parents[2])
 if module_path not in sys.path:
     sys.path.append(module_path)
@@ -90,12 +89,12 @@ def get_parsed(managed_list: DictProxy, name: Path):
     """Checks against the SyncManager's shared Dict as to if name has been
     first-pass parsed before."""
     if name not in managed_list.keys():
-        logger.info("Cache miss on path = %s", name)
+        logger.info("Not in memo for path = %s", name)
         result = VHFparser(name, headers_only=True)
         result._pre_trace_parsing()
         managed_list.update({name: result})
     else:
-        logger.info("Cache hit on path = %s", name)
+        logger.info("In memo for path = %s", name)
         result: VHFparser = managed_list[name]
         logger.debug("result.plot_window = %s", result.timings.plot_start)
         if result.timings.plot_start - result.timings.trace_start > timedelta(seconds=6):
@@ -107,7 +106,7 @@ def get_parsed(managed_list: DictProxy, name: Path):
 def averaging_spectrogram(managed_list: DictProxy, time: datetime):
     """We get the spectrogram for (time, time+INTERVAL), and save into npy file."""
     files = get_bin_files(time)
-    logger.debug("Proc %s got files = %s", current_proc().name, map(lambda x: x.name, files))
+    logger.debug("Proc %s got files = %s", current_proc().name, list(map(lambda x: x.name, files)))
     if len(files) == 0:
         return
 
@@ -187,7 +186,6 @@ def averaging_spectrogram(managed_list: DictProxy, time: datetime):
                 p_freq_old = p_freq
                 p_freq = None
 
-
     if p_freq_old is None:
         logger.error("p_freq found to be none!")
         logger.error("proc name: %s", current_proc().name)
@@ -213,6 +211,7 @@ def averaging_spectrogram_write(time: datetime, freqs: NDArray, avgSxx: NDArray)
             averaging_spectrogram_write_core(time, freqs, avgSxx)
     except NameError:  # we are not in multiproc mode and have no lock
         averaging_spectrogram_write_core(time, freqs, avgSxx)
+
 
 def averaging_spectrogram_write_core(time, freqs: NDArray, avgSxx: NDArray):
     with open(NPY_FILE, 'rb+') as file:
@@ -250,12 +249,12 @@ def main():
     """Perform digesting of files down into averaged spectrograms."""
     print(f"We are now running for {len(SEARCH_FILES) = }")
     timings: Iterable[datetime] = timings_left()
-    random.shuffle(timings)
+    np.random.shuffle(timings)
 
     global_cm = SyncManager()
     global_cm.start()  # there is no With block for SyncManager from what it seems
-    GLOBAL_CACHE = global_cm.dict()
-    partial_worker = partial(worker, managed_list=GLOBAL_CACHE)
+    GLOBAL_MEMO = global_cm.dict()
+    partial_worker = partial(worker, managed_list=GLOBAL_MEMO)
 
     npz_lock = Lock()
     nproc = cpu_count() - 1
@@ -273,12 +272,12 @@ def main_linear():
     """Perform digesting of files down into averaged spectrograms without Pool."""
     print(f"We are now running for {len(SEARCH_FILES) = }")
     timings: Iterable[datetime] = timings_left()
-    random.shuffle(timings)
+    np.random.shuffle(timings)
 
     lock = Lock()
-    global_cache = dict()
+    global_memo = dict()
     for t in timings:
-        worker(t, global_cache)
+        worker(t, global_memo)
 
 
 def aware_to_naive(t: datetime) -> datetime:
@@ -286,7 +285,7 @@ def aware_to_naive(t: datetime) -> datetime:
 
     This is needed because np.datetime64 otherwise takes the UTC+0 equivalent of t.
     """
-    offset_tz: tzinfo = t.tzinfo
+    offset_tz: Optional[tzinfo] = t.tzinfo
     if offset_tz is not None:
         offset = offset_tz.utcoffset(t)
     else:
@@ -310,6 +309,9 @@ def timings_left() -> list[datetime]:
     # np.arange will preferably generate np.datetime64 from TIME_START: datetime.datetime
     # this will consequently cast from TZ+X to TZ+0.
     timings = np.arange(aware_to_naive(TIME_START), aware_to_naive(TIME_END), INTERVAL)
+    timings = map(datetime64_to_dt, timings)
+    timings = map(naive_to_aware, timings)
+    timings = list(timings)
 
     with open(NPY_FILE, 'rb+') as file:
         try:
@@ -327,15 +329,13 @@ def timings_left() -> list[datetime]:
     except ValueError:
         logger.debug("Nothing from file")
     only_in_timings = np.setdiff1d(timings, times_arr)
-    only_in_timings = map(datetime64_to_dt, only_in_timings)  # putting this in an NDArray only undoes our work
-    only_in_timings = map(naive_to_aware, only_in_timings) 
-    only_in_timings = list(only_in_timings)
     logger.info("Remaining times found needed doing: only_in_timings = %s", only_in_timings)
     return only_in_timings
 
 
 def no_matplot(msg: logging.LogRecord):
     return not msg.name.startswith("matplotlib") and not msg.name.startswith("PIL")
+
 
 if __name__ == "__main__":
     logger = getLogger()
